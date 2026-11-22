@@ -39,3 +39,15 @@ Every item here is a Proposal (design doc) or a plan v2 Fix. If the team says no
 | Playback: the cursor follows the live head only when it is at the live head; while reviewing an earlier hour during play, the live head keeps moving and the view stays put. "Back to live" jumps the view to the live head without starting play | Plan v2 Fix 2 (doesn't say what play does to a cursor held back) | `engine.tick`, app "Back to live" button | Make any slider move pause playback |
 | Dragging the slider past the live head snaps it back to the live head with a one-line note | Plan v2 Fix 2 | `engine.move_cursor`, `app.on_slider` | n/a |
 | Grey counties show stock to send; their need is blank, not zero | Design doc panel section 3; Fix 4 | `engine.state_at` (`need: None`) | n/a |
+
+## Added in Phase 2A (engine only; confirmation waits for the 9:00 call)
+
+| Item | Source | Where it lives | If the team says no |
+|---|---|---|---|
+| Transit time is fixed at dispatch from the receiver's Roads color then (for a silent receiver, its last known Roads color). A later Roads change doesn't shorten or lengthen a shipment already sent | Design doc Proposal "6, or 12 if Roads is red"; doesn't say when Roads is read | `engine.direct_supplies` (`transit_hours`) | Recompute arrival from Roads at each hour |
+| Until delivery confirmation is decided, a shipment past its transit time shows "Arrived, not confirmed" and stays counted as in transit at the receiver. It never reaches the receiver's on-hand stock, need or color. This keeps total stock conserved | Design doc p. 8: on-hand rises only on an accepted confirmation; confirmation itself is out of scope tonight | `engine.shipment_status`, `engine.apply_events` | Phase 2B decides what an accepted confirmation does |
+| Receivers must be in the storm path; senders can be any county with stock, hit or grey | Design doc: "From a hit county's panel, click Direct supplies"; sending list is every county with stock | `engine.direct_supplies` | Allow grey receivers by deleting one check |
+| A county can't send to itself; quantity must be a whole number above zero; role and reason must be non-blank | Design doc: reason required; role stamped on every action | `engine.direct_supplies` | n/a |
+| The log is a tuple of frozen entries; adding returns a new tuple. Nothing in the engine edits or deletes an entry | Design doc: no one can edit or delete a log entry | `engine.DirectSupplies`, `engine.direct_supplies` | n/a |
+| A refused action raises `ActionRefused` and logs nothing | Design doc: Confirm stays disabled until valid | `engine.ActionRefused` | n/a |
+| Reviewing an hour before a dispatch shows the stock as it was then (the log is replayed up to the cursor) | Plan v2 Fix 2: everything recomputed from the log up to the cursor | `engine.apply_events` | n/a |

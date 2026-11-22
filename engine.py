@@ -253,12 +253,12 @@ def _last_at_or_before(hours: list, cursor: int):
 def state_at(cursor: int, events=(), scenario: Scenario | None = None) -> dict:
     """Every county's state at simulated hour `cursor`, from the data and events.
 
-    This is the only function that computes state. `events` is the action log;
-    it is empty until Phase 2 adds actions, so stock never moves yet.
+    This is the only function that computes state. `events` is the action log
+    (a tuple of DirectSupplies entries); it is replayed up to `cursor`.
 
     Returns {fips: dict} with: county, hit, color, status_word, lifelines,
     lifelines_as_of, hours_since_contact, last_contact_hour, last_report_hour,
-    resources {name: {need, on_hand, in_transit}}.
+    resources {name: {need, on_hand, in_transit}}, incoming (shipments).
     """
     sc = scenario or default_scenario()
     cursor = int(cursor)
@@ -283,6 +283,7 @@ def state_at(cursor: int, events=(), scenario: Scenario | None = None) -> dict:
                     r: {"need": None, "on_hand": on_hand[r], "in_transit": 0}
                     for r, _, _ in RESOURCES
                 },
+                "incoming": [],
             }
             continue
 
@@ -310,7 +311,12 @@ def state_at(cursor: int, events=(), scenario: Scenario | None = None) -> dict:
                 r: {"need": need.get(r), "on_hand": on_hand[r], "in_transit": 0}
                 for r, _, _ in RESOURCES
             },
+            "incoming": [],
         }
+
+    # Replay the action log. Dispatch moves stock only: need and color above
+    # come from the answer key and are never touched by a shipment.
+    apply_events(out, cursor, events)
     return out
 
 
@@ -367,3 +373,148 @@ def move_cursor(clock: Clock, hour: int) -> Clock:
 
 def reset(_clock: Clock | None = None) -> Clock:
     return Clock()
+
+
+# ===========================================================================
+# Phase 2A: Direct supplies and the action log (engine only)
+# ===========================================================================
+
+TRANSIT_HOURS = 6  # Proposal: transit time
+TRANSIT_HOURS_ROADS_RED = 12  # ... or 12 if the receiver's Roads lifeline is red
+RESOURCE_NAMES = tuple(name for name, _, _ in RESOURCES)
+
+
+class ActionRefused(ValueError):
+    """An action the rules don't allow. Nothing is logged and nothing changes."""
+
+
+@dataclass(frozen=True)
+class DirectSupplies:
+    """One logged Direct supplies action. Frozen: no entry can be edited."""
+
+    seq: int  # position in the log, from 1
+    hour: int  # simulated hour of dispatch (the live head)
+    role: str
+    from_fips: str
+    to_fips: str
+    resource: str
+    quantity: int
+    reason: str
+    transit_hours: int  # fixed at dispatch: 6, or 12 if receiver Roads was red
+
+    @property
+    def arrives(self) -> int:
+        return self.hour + self.transit_hours
+
+    action = "Directed supplies"
+
+
+def direct_supplies(
+    events: tuple,
+    clock: Clock,
+    from_fips: str,
+    to_fips: str,
+    resource: str,
+    quantity: int,
+    role: str,
+    reason: str,
+    scenario: Scenario | None = None,
+) -> tuple:
+    """Return a new log with one Direct supplies entry appended, or raise
+    ActionRefused. The log is a tuple, so the old one is never changed."""
+    sc = scenario or default_scenario()
+    events = tuple(events)
+
+    if not clock.at_live_head:
+        raise ActionRefused(
+            f"Actions are allowed only at the live hour ({clock.live_head}); "
+            f"the view is at hour {clock.cursor}."
+        )
+    if not isinstance(role, str) or not role.strip():
+        raise ActionRefused("A role is required.")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ActionRefused("A reason is required.")
+    if resource not in RESOURCE_NAMES:
+        raise ActionRefused(f"Unknown resource: {resource!r}.")
+    if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity <= 0:
+        raise ActionRefused("Quantity must be a whole number greater than zero.")
+    if from_fips not in sc.names or to_fips not in sc.names:
+        raise ActionRefused("Unknown county.")
+    if from_fips == to_fips:
+        raise ActionRefused("A county can't send supplies to itself.")
+    if to_fips not in sc.hit:
+        raise ActionRefused("Supplies are directed to counties in the storm path.")
+
+    now = state_at(clock.live_head, events, sc)
+    on_hand = now[from_fips]["resources"][resource]["on_hand"]
+    if quantity > on_hand:
+        raise ActionRefused(
+            f"{now[from_fips]['county']} has {on_hand} {resource} on hand; "
+            f"can't send {quantity}."
+        )
+
+    receiver_roads = (now[to_fips]["lifelines"] or {}).get("Roads")
+    transit = TRANSIT_HOURS_ROADS_RED if receiver_roads == RED else TRANSIT_HOURS
+
+    entry = DirectSupplies(
+        seq=len(events) + 1,
+        hour=clock.live_head,
+        role=role.strip(),
+        from_fips=from_fips,
+        to_fips=to_fips,
+        resource=resource,
+        quantity=quantity,
+        reason=reason.strip(),
+        transit_hours=transit,
+    )
+    return events + (entry,)
+
+
+def shipment_status(entry: DirectSupplies, cursor: int) -> str:
+    """Delivery confirmation waits for the team (Sunday 9:00), so a shipment
+    past its transit time is 'Arrived, not confirmed', still counted in transit."""
+    return "In transit" if cursor < entry.arrives else "Arrived, not confirmed"
+
+
+def apply_events(out: dict, cursor: int, events) -> None:
+    """Replay the log up to `cursor` onto state_at's output (in place)."""
+    for ev in events:
+        if not isinstance(ev, DirectSupplies) or ev.hour > cursor:
+            continue
+        out[ev.from_fips]["resources"][ev.resource]["on_hand"] -= ev.quantity
+        out[ev.to_fips]["resources"][ev.resource]["in_transit"] += ev.quantity
+        out[ev.to_fips]["incoming"].append(
+            {
+                "seq": ev.seq,
+                "from": ev.from_fips,
+                "resource": ev.resource,
+                "quantity": ev.quantity,
+                "dispatched": ev.hour,
+                "arrives": ev.arrives,
+                "status": shipment_status(ev, cursor),
+            }
+        )
+
+
+def log_rows(events, cursor: int, scenario: Scenario | None = None) -> list[dict]:
+    """The action log as read-only rows, newest first (design doc fields)."""
+    sc = scenario or default_scenario()
+    rows = []
+    for ev in reversed(tuple(events)):
+        rows.append(
+            {
+                "Simulated time": f"Hour {ev.hour}",
+                "Role": ev.role,
+                "Action": ev.action,
+                "Details": f"{ev.quantity} {ev.resource}, "
+                f"{sc.names[ev.from_fips]} to {sc.names[ev.to_fips]}",
+                "Reason": ev.reason,
+                "Status": shipment_status(ev, cursor) if ev.hour <= cursor else "Not yet sent",
+            }
+        )
+    return rows
+
+
+def reset_run() -> tuple[Clock, tuple]:
+    """Reset: hour 0 and an empty log. Clears every test-mode action."""
+    return Clock(), ()
