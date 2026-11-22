@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import hashlib
+import json
 import re
+import threading
 from dataclasses import dataclass, field
 
 # ---- Messages and limits ----------------------------------------------------------
@@ -182,29 +184,70 @@ def text_hash(text: str) -> str:
     return hashlib.sha256(str(text).encode("utf-8")).hexdigest()
 
 
+class SharedCache:
+    """Server-wide cache of raw model output, shared by every tab (Phase 3).
+
+    Keyed by (client name, text hash), so a fake client's answers are never
+    served to the real one. Only successful calls are stored. It lives for as
+    long as the server process (a code reload or restart empties it)."""
+
+    def __init__(self):
+        self._data = {}
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        with self._lock:
+            return self._data.get(key)
+
+    def put(self, key, raw):
+        with self._lock:
+            self._data[key] = raw
+
+    def clear(self):
+        with self._lock:
+            self._data.clear()
+
+    def __len__(self):
+        return len(self._data)
+
+
+SHARED_CACHE = SharedCache()
+
+
 @dataclass
 class Intake:
-    """One browser tab's AI intake: a cache by report-text hash and a call cap."""
+    """One browser tab's AI intake: its call cap. The cache is server-wide
+    (SHARED_CACHE); a cache hit costs no call and doesn't count to the cap."""
 
     client: object
     max_calls: int = MAX_CALLS_PER_SESSION
     calls_made: int = 0
-    _cache: dict = field(default_factory=dict)  # text hash -> raw model output
+    cache: SharedCache = field(default_factory=lambda: SHARED_CACHE)
+
+    def cache_key(self, report: dict):
+        return (getattr(self.client, "cache_name", type(self.client).__name__),
+                text_hash(report["text"]))
+
+    def cached(self, report: dict) -> bool:
+        return self.cache.get(self.cache_key(report)) is not None
 
     def read(self, report: dict) -> ReadResult:
         rid = str(report.get("report_id", ""))
-        key = text_hash(report["text"])
-        if key in self._cache:  # no second call for the same text
-            accepted, rejected = check_facts(self._cache[key], report)
+        key = self.cache_key(report)
+        raw = self.cache.get(key)
+        if raw is not None:  # no second call for the same text, in any tab
+            accepted, rejected = check_facts(raw, report)
             return ReadResult(rid, "ok", "", report["text"], accepted, rejected, True)
         if self.calls_made >= self.max_calls:
             return ReadResult(rid, "limit", CALL_LIMIT_MESSAGE, report["text"])
         self.calls_made += 1
         try:
             raw = _call(self.client, payload_for(report), CALL_TIMEOUT_SECONDS)
+            if not isinstance(raw, (list, tuple)):
+                raise ValueError("model output is not a list of facts")
         except Exception:  # noqa: BLE001
             return ReadResult(rid, "unavailable", AI_UNAVAILABLE, report["text"])
-        self._cache[key] = raw  # only successful calls are cached
+        self.cache.put(key, list(raw))  # only successful calls are cached
         accepted, rejected = check_facts(raw, report)
         return ReadResult(rid, "ok", "", report["text"], accepted, rejected)
 
@@ -283,16 +326,142 @@ def find_contradictions(facts) -> list[tuple]:
     ]
 
 
-# ---- The real client: NOT BUILT (Phase 3) -------------------------------------------
+# ---- The real client (Phase 3) -------------------------------------------------------
+
+MODEL_ID = "claude-haiku-5-5"
+MAX_OUTPUT_TOKENS = 800
+TOOL_NAME = "record_facts"
+
+LIFELINE_VOCAB = ("Roads", "Water", "Health and Medical")
+METRIC_VOCAB = ("Route status", "Systems out of service", "System status",
+                "Hospital status", "Requested")
+STATUS_VOCAB = ("Open", "Partly closed", "No route", "Out", "Normal", "Boil notice",
+                "On generator", "Evacuating", "Closed", "Requested")
+
+SYSTEM_PROMPT = """You read one field report from a fictional hurricane exercise in North Carolina and record facts with the record_facts tool.
+
+Extract only these kinds of fact:
+- Roads: metric "Route status"; status_word Open, Partly closed or No route; value "Open", "Some primary routes closed" or "No open route to county seat".
+- Water: metric "Systems out of service" with status_word "Out" and the number of systems out as value whenever a count is stated or clear ("the water system" = 1); otherwise metric "System status" with status_word Normal, Boil notice or Out and value "Normal", "Boil-water notice" or "System out of service".
+- Health and Medical: metric "Hospital status"; status_word Normal, On generator, Evacuating or Closed; value "Normal", "Hospital on generator or diverting" or "Hospital closed or evacuating".
+- Resource requests: lifeline_or_resource one of Water, Generators, Utility crews, Search-and-rescue teams, Food, Shelter, Medical teams, Hygiene items, Sanitation; metric "Requested"; status_word "Requested"; value the number requested, as a number.
+
+Rules:
+- quote: copy the words from the report that support the fact, exactly as written, word for word. Never paraphrase or fix spelling.
+- county: the North Carolina county the report is about, as named or clearly implied in the source or text, without the word "County".
+- Never guess. If a fact is uncertain, leave it out. Returning no facts is fine.
+- Do not record power or communications; they come from other feeds.
+- Use only the words listed above for lifeline_or_resource, metric and status_word."""
+
+FACT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "county": {"type": "string"},
+                    "lifeline_or_resource": {
+                        "type": "string", "enum": list(LIFELINE_VOCAB + RESOURCE_NAMES)},
+                    "metric": {"type": "string", "enum": list(METRIC_VOCAB)},
+                    "value": {"type": ["string", "number"]},
+                    "status_word": {"type": "string", "enum": list(STATUS_VOCAB)},
+                    "quote": {"type": "string"},
+                },
+                "required": ["county", "lifeline_or_resource", "metric", "value",
+                             "status_word", "quote"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["facts"],
+    "additionalProperties": False,
+}
+
+
+def user_message(payload: dict) -> str:
+    """The model sees exactly payload_for(report), as JSON, and nothing else."""
+    return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def tool_definition() -> dict:
+    return {
+        "name": TOOL_NAME,
+        "description": "Record the facts found in the report (an empty list if none).",
+        "input_schema": FACT_SCHEMA,
+        "strict": True,
+    }
+
 
 class ClaudeClient:
-    """>>> PHASE 3: REAL CLAUDE CLIENT GOES HERE. Not built yet. <<<
+    """The real client. The API key comes only from st.secrets and is never
+    logged. extract() receives payload_for(report) and nothing else."""
 
-    To build: a small Claude model with structured JSON output that returns a
-    list of facts in FACT_FIELDS form. The API key comes only from
-    st.secrets (import streamlit inside __init__, never at module top) and is
-    never logged. extract() receives payload_for(report) and nothing else.
-    """
+    cache_name = MODEL_ID
+
+    def __init__(self, api_key: str | None = None):
+        if api_key is None:
+            import streamlit as st  # only here: ai.py stays importable without Streamlit
+            api_key = st.secrets["ANTHROPIC_API_KEY"]
+        import anthropic
+        self._client = anthropic.Anthropic(
+            api_key=api_key, timeout=CALL_TIMEOUT_SECONDS, max_retries=1)
+
+    def request(self, payload: dict) -> dict:
+        """The exact request sent (no key in it), so tests can check it."""
+        return {
+            "model": MODEL_ID,
+            "max_tokens": MAX_OUTPUT_TOKENS,
+            "system": SYSTEM_PROMPT,
+            # Haiku 5.5 thinks by default; thinking off is allowed at its default
+            # effort, and a forced tool call needs it off.
+            "thinking": {"type": "disabled"},
+            "tools": [tool_definition()],
+            "tool_choice": {"type": "tool", "name": TOOL_NAME},
+            "messages": [{"role": "user", "content": user_message(payload)}],
+        }
 
     def extract(self, payload: dict):
-        raise NotImplementedError("Phase 3: the real Claude client isn't built yet.")
+        response = self._client.messages.create(**self.request(payload))
+        if response.stop_reason not in ("tool_use", "end_turn"):
+            raise RuntimeError(f"stopped: {response.stop_reason}")  # max_tokens, refusal: not processed
+        for block in response.content:
+            if block.type == "tool_use" and block.name == TOOL_NAME:
+                facts = block.input.get("facts")
+                if not isinstance(facts, list):
+                    raise ValueError("no facts list")
+                return facts
+        raise ValueError("no tool call in the response")
+
+
+class UnavailableClient:
+    """Stands in when there is no key or the client can't start: every call
+    fails, so every report shows "AI unavailable" and changes nothing."""
+
+    cache_name = "unavailable"
+
+    def __init__(self, why: str = ""):
+        self.why = why
+
+    def extract(self, payload: dict):
+        raise RuntimeError(self.why or "AI unavailable")
+
+
+class ScriptedClient:
+    """A test double: answers from a table {report text: [raw facts]}; any
+    other text gets no facts. `fail=True` makes every call raise. Records
+    every payload it receives, so tests can check what the model is sent."""
+
+    cache_name = "scripted"
+
+    def __init__(self, table: dict | None = None, fail: bool = False):
+        self.table = {normalize(k): v for k, v in (table or {}).items()}
+        self.fail = fail
+        self.payloads = []
+
+    def extract(self, payload: dict):
+        self.payloads.append(dict(payload))
+        if self.fail:
+            raise RuntimeError("scripted failure")
+        return [dict(f) for f in self.table.get(normalize(payload["text"]), [])]

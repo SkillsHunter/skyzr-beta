@@ -5,11 +5,13 @@ County boundaries are real public data. All state comes from
 engine.state_at(cursor, events); this file only draws it.
 """
 
+import os
 import time
 
 import plotly.graph_objects as go
 import streamlit as st
 
+import ai
 import engine
 import ui
 
@@ -60,8 +62,49 @@ ss.setdefault("overlay", "Overall")
 ss.setdefault("confirm_reset", False)
 ss.setdefault("last_tick", 0.0)
 ss.setdefault("slider_note", "")
+ss.setdefault("mode", "Answer-key mode")
+ss.setdefault("ai_reads", {})  # report_id -> ai.ReadResult, for reports read so far
+ss.setdefault("ai_fail_test", False)
 ss.setdefault("slider_gen", 0)  # see slider_key
 ss.setdefault("slider_held", {0: ss.clock.cursor})  # slider_gen -> value that slider holds
+
+
+# ---- AI intake (Phase 3) -----------------------------------------------------------
+FAKE_AI = os.environ.get("SKYZR_FAKE_AI", "")  # localhost test double only; never set on the deployed app
+
+
+def make_client():
+    """The real Claude client, or a client that always fails if there is no key.
+    The key is read only inside ai.ClaudeClient, from st.secrets."""
+    if FAKE_AI:
+        import fake_ai  # test double: scripted answers from the public report texts
+        return fake_ai.client(fail=FAKE_AI == "fail" or ss.ai_fail_test)
+    try:
+        return ai.ClaudeClient()
+    except Exception:  # noqa: BLE001 - no key or no SDK: every report shows "AI unavailable"
+        return ai.UnavailableClient("No API key")
+
+
+if "intake" not in ss:
+    ss.intake = ai.Intake(make_client())
+
+
+def ai_mode():
+    return ss.mode == "AI mode"
+
+
+def reports_due(head):
+    return [r for rid, r in sorted(sc.reports.items(), key=lambda kv: kv[1]["sim_hour"])
+            if r["sim_hour"] <= head and rid not in ss.ai_reads]
+
+
+def read_reports(reports):
+    for r in reports:
+        ss.ai_reads[str(r["report_id"])] = ss.intake.read(r)
+
+
+def on_ai_fail_test():
+    ss.intake.client = make_client()
 
 
 # ---- Callbacks ---------------------------------------------------------------
@@ -259,7 +302,19 @@ def playback_tick():
 
 playback_tick()
 clock = ss.clock
-state = engine.state_at(clock.cursor, ss.events, sc)
+
+# AI mode: each report is read when the live head reaches its hour. The clock
+# waits while the AI reads (the next hour starts a full interval after reading).
+if ai_mode():
+    due = reports_due(clock.live_head)
+    if due:
+        hours = sorted({r["sim_hour"] for r in due})
+        with st.spinner(f"AI is reading {len(due)} report(s) for hour "
+                        f"{', '.join(map(str, hours))}. The clock waits until it's done."):
+            read_reports(due)
+        ss.last_tick = time.monotonic()
+
+state = engine.state_at(clock.cursor, ss.events, sc, ss.ai_reads if ai_mode() else None)
 
 # ---- Header ------------------------------------------------------------------
 silent_now = sum(1 for s in state.values() if s["color"] == engine.PURPLE)
@@ -267,8 +322,11 @@ reports_so_far = int((tables["reports.csv"]["sim_hour"] <= clock.cursor).sum())
 ui.header(
     "SKYZR",
     "North Carolina county operations · Hurricane Kestrel (fictional)",
-    "Answer-key mode: colors come from the scenario answer key, not from AI. "
-    "SKYZR shows what is known and records what people decide. It never makes the decision.",
+    ("AI mode: AI reads each report into cited facts; code checks every quote and sets "
+     "every color. Power and communications come from feeds. "
+     if ai_mode() else
+     "Answer-key mode: colors come from the scenario answer key, not from AI. ")
+    + "SKYZR shows what is known and records what people decide. It never makes the decision.",
     [
         ("Counties", str(len(shapes))),
         ("In storm path", str(len(sc.hit))),
@@ -276,6 +334,47 @@ ui.header(
         ("Reports so far", f"{reports_so_far} of {len(tables['reports.csv'])}"),
     ],
 )
+
+# ---- Mode switch (Phase 3) ------------------------------------------------------------
+with st.container(border=True):
+    st.radio("Mode", ["Answer-key mode", "AI mode"], key="mode", horizontal=True,
+             help="Answer-key mode colors the map from the scenario answer key. AI mode "
+                  "reads the reports with AI; code checks every quote.")
+    if ai_mode():
+        n_ok = sum(1 for r in ss.ai_reads.values() if r.status == "ok")
+        n_bad = sum(1 for r in ss.ai_reads.values() if r.status != "ok")
+        st.caption(f"AI mode is on. Reports read so far: {n_ok}"
+                   + (f" · not processed: {n_bad}" if n_bad else "")
+                   + f" · AI calls this tab: {ss.intake.calls_made} of {ai.MAX_CALLS_PER_SESSION}"
+                   + f" · model {ai.MODEL_ID}" + (" (TEST DOUBLE)" if FAKE_AI else ""))
+        if FAKE_AI:
+            st.checkbox("Test only: make the AI fail", key="ai_fail_test",
+                        on_change=on_ai_fail_test)
+        if clock.live_head == engine.FIRST_HOUR:
+            if st.button("Prepare AI reading", icon=":material/auto_awesome:",
+                         help="Reads all 50 reports once, before playback, to fill the "
+                              "server cache. Facts still take effect only at each report's hour."):
+                bar = st.progress(0.0, text="Reading reports…")
+                all_reports = sorted(sc.reports.values(), key=lambda r: r["sim_hour"])
+                results = []
+                for i, r in enumerate(all_reports, 1):
+                    results.append(ss.intake.read(r))
+                    bar.progress(i / len(all_reports), text=f"Read {i} of {len(all_reports)}")
+                ok = sum(1 for x in results if x.status == "ok")
+                (st.success if ok == len(results) else st.warning)(
+                    f"Prepared: {ok} of {len(results)} reports read and cached. "
+                    + ("" if ok == len(results) else
+                       f"{len(results) - ok} were not processed and will be tried again at their hour. ")
+                    + "Facts take effect only when the clock reaches each report's hour.")
+                # Failed reads aren't kept, so each is tried again at its hour.
+        st.download_button(
+            "Export accepted facts (CSV)",
+            data=engine.accepted_facts_csv(
+                {k: v for k, v in ss.ai_reads.items()
+                 if sc.reports[k]["sim_hour"] <= clock.live_head}),
+            file_name="skyzr_accepted_facts.csv", mime="text/csv",
+            icon=":material/download:",
+            help="Every accepted fact so far: report_id plus the nine fact fields.")
 
 # ---- Role picker (Proposal): a label, not a login ------------------------------
 with st.container(horizontal=True, vertical_alignment="bottom"):
@@ -363,7 +462,8 @@ with map_col:
             line = s["status_word"] + (" · Manual" if s["manual_marker"] else "")
             if overlay != "Overall" and s["color"] not in (engine.GREY, engine.PURPLE):
                 ll = s["lifelines"][overlay]
-                line += f"<br>{overlay}: {engine.LIFELINE_WORDS[overlay][ll]}"
+                line += (f"<br>{overlay}: {engine.LIFELINE_WORDS[overlay][ll]}" if ll
+                         else f"<br>{overlay}: No report yet")
             hover.append(line)
 
         # z is a whole-number code, so each county lands exactly on its color.
@@ -466,6 +566,71 @@ def direct_supplies_form(to_fips, state):
         (st.error if ss.ds_message.startswith("Not sent") else st.success)(ss.ds_message)
 
 
+def source_cell(src, silent):
+    """The "Source report and quote" cell (AI mode)."""
+    if not src:
+        return '<span class="sk-muted">No report yet</span>'
+    muted = ' class="sk-muted"' if silent else ""
+    if src.get("kind") == "report":
+        both = src.get("both")
+        items = both if both else [src]
+        parts = [f"{ui.e(v['source'])} · hour {v['hour']} · verified: {ui.e(v['verified'])}"
+                 f"<br>“{ui.e(v['quote'])}”" for v in items]
+        note = f"<br><small>{ui.e(src['note'])}</small>" if src.get("note") else ""
+        label = "<b>Both kept:</b><br>" if both else ""
+        return f"<span{muted}>{label}{'<br>'.join(parts)}{note}</span>"
+    return f"<span{muted}>{ui.e(src.get('note', ''))}</span>"
+
+
+def need_cell(r):
+    if r["need"] is None:
+        return ('<span class="sk-muted">' + ui.e(engine.NEED_UNKNOWN) + "</span>"
+                if "need_since" in r else "None")
+    req = r.get("request") or {}
+    if req.get("range"):
+        lo, hi = req["range"]
+        return f"{lo} to {hi}" + (" (contradiction)" if req.get("contradiction") else " (both kept)")
+    return str(r["need"])
+
+
+def on_resolve(fips, i, c):
+    k = f"rs_{fips}_{i}"
+    choice = ss.get(f"{k}_choice")
+    detail = ""
+    if choice:
+        if c.get("kind") == "ai":
+            pick = {"a": c["a"], "b": c["b"]}.get(choice)
+            detail = (f"kept {pick['value']} (hour {pick['hour']}, {pick['source']})" if pick
+                      else f"kept both ({c['a']['value']} and {c['b']['value']})")
+        else:
+            detail = {"manual": "kept the manual value", "report": "kept the report",
+                      "both": "kept both"}[choice]
+    key = c.get("key", c["target"])
+    ss.events, msg, ok = engine.submit_resolve(
+        ss.events, ss.clock, fips, c["target"], c.get("kind", "manual"), key, choice,
+        ss.get("role"), ss.get(f"{k}_reason"), sc, detail)
+    set_form_msg(k, msg)
+    if ok:
+        ss[f"{k}_choice"], ss[f"{k}_reason"] = None, ""
+
+
+def resolve_form(fips, i, c, options):
+    """Resolve: keep one value or both. Role and reason required; live hour only.
+    Same one-click form pattern as Direct supplies."""
+    k = f"rs_{fips}_{i}"
+    if not ss.clock.at_live_head:
+        not_live_note("Resolve")
+        return
+    with st.form(k, clear_on_submit=False, border=False):
+        st.radio("Resolve: which value to keep?", list(options), key=f"{k}_choice",
+                 index=None, format_func=lambda o: options[o])
+        st.text_input("Reason (required)", key=f"{k}_reason",
+                      placeholder="Why this value? Recorded in the log.")
+        st.form_submit_button("Resolve", type="primary", on_click=on_resolve,
+                              args=(fips, i, c))
+    show_form_msg(k)
+
+
 def not_live_note(action):
     c = ss.clock
     st.info(f"{action} is available only at the live hour ({c.live_head}). You're reviewing "
@@ -561,8 +726,14 @@ with panel_col:
                         f"Below is the last known picture, from hour {s['lifelines_as_of']}."
                     )
                 body = []
+                srcs = s.get("lifeline_sources") or {}
                 for ll in engine.LIFELINES:
                     c = s["lifelines"][ll]
+                    if c is None:  # AI mode: nothing accepted for this lifeline yet
+                        note = (srcs.get(ll) or {}).get("note", "No report yet")
+                        body.append([ui.e(ll), '<span class="sk-muted">No report yet</span>',
+                                     f'<span class="sk-muted">{ui.e(note)}</span>'])
+                        continue
                     if s["silent"]:
                         # Muted: grey text, no colored chip. A silent county never
                         # shows red, yellow or green.
@@ -575,8 +746,9 @@ with panel_col:
                         if m and m["outcome"] != "cleared":
                             detail = f"Manual (hour {m['hour']}, {m['role']})"
                         cell = ui.status_cell(c, c.capitalize(), detail)
-                    body.append([ui.e(ll), cell,
-                                 '<span class="sk-muted">AI mode only</span>'])
+                    body.append([ui.e(ll), cell, source_cell(srcs.get(ll), s["silent"])
+                                 if s.get("mode") == "ai" else
+                                 '<span class="sk-muted">Answer key (no report text in this mode)</span>'])
                 ui.table(["Lifeline", "Color", "Source report and quote"], body)
                 om = s["manual"].get("Overall")
                 if om and om["outcome"] != "cleared" and not s["silent"]:
@@ -590,16 +762,20 @@ with panel_col:
                 r = s["resources"][name]
                 if s["hit"]:
                     body.append([f"{ui.e(name)}<br><small class='sk-muted'>{ui.e(unit)}</small>",
-                                 str(r["need"]), str(r["on_hand"]), str(r["in_transit"])])
+                                 need_cell(r), str(r["on_hand"]), str(r["in_transit"])])
                 else:
                     body.append([f"{ui.e(name)}<br><small class='sk-muted'>{ui.e(unit)}</small>",
                                  str(r["on_hand"])])
             if s["hit"]:
                 ui.table(["Resource", "Need", "On hand", "In transit"], body, num_cols=(1, 2, 3),
-                         caption=("Need is true need from the answer key"
-                                  + (f" as last known at hour {s['lifelines_as_of']}"
-                                     if s["silent"] else "")
-                                  + ", minus confirmed deliveries (never below 0)."))
+                         caption=(("Known need: the latest accepted resource request, minus "
+                                   "deliveries confirmed after it (never below 0). "
+                                   "No request means need unknown, never 0."
+                                   if s.get("mode") == "ai" else
+                                   "Need is true need from the answer key"
+                                   + (f" as last known at hour {s['lifelines_as_of']}"
+                                      if s["silent"] else "")
+                                   + ", minus confirmed deliveries (never below 0).")))
             else:
                 ui.table(["Resource", "On hand"], body, num_cols=(1,))
 
@@ -607,19 +783,61 @@ with panel_col:
             ui.section("Contradictions")
             for i, c in enumerate(s["contradictions"]):
                 def side(v):
+                    if not v.get("color"):
+                        return ui.e(str(v.get("value", "")))
                     if s["silent"]:
                         return f'<span class="sk-muted">{ui.e(v["color"].capitalize())}</span>'
-                    return ui.status_cell(v["color"], v["color"].capitalize())
-                ui.table(
-                    [c["target"], "Hour", "Source"],
-                    [[side(c["manual"]), f"Hour {c['manual']['hour']}", ui.e(c["manual"]["source"])],
-                     [side(c["report"]), f"Hour {c['report']['hour']}", ui.e(c["report"]["source"])]],
-                    caption=f"{c['target']}: the manual value and the next report disagree. "
-                            "Neither is overwritten.",
-                )
-                st.button("Resolve · Coming next", key=f"resolve_{fips}_{i}", disabled=True,
-                          help="Resolving a contradiction is Phase 3.")
-            ui.note("AI-read contradictions: AI mode only (Phase 3).")
+                    return ui.status_cell(v["color"], v["color"].capitalize(), str(v.get("value", "")))
+                if c.get("kind") == "ai":
+                    a, b = c["a"], c["b"]
+                    ui.table(
+                        [c["target"], "Hour", "Source", "Verified", "Quote"],
+                        [[side(v), f"Hour {v['hour']}", ui.e(v["source"]), ui.e(v["verified"]),
+                          f"“{ui.e(v['quote'])}”"] for v in (a, b)],
+                        caption=f"{c['target']}: two reports disagree. Neither is overwritten; "
+                                "the lifeline shows Contradiction until someone resolves it.",
+                    )
+                    options = {"a": f"Keep {a['value']} (hour {a['hour']}, {a['source']})",
+                               "b": f"Keep {b['value']} (hour {b['hour']}, {b['source']})",
+                               "both": f"Keep both ({a['value']} and {b['value']})"}
+                else:
+                    ui.table(
+                        [c["target"], "Hour", "Source"],
+                        [[side(c["manual"]), f"Hour {c['manual']['hour']}", ui.e(c["manual"]["source"])],
+                         [side(c["report"]), f"Hour {c['report']['hour']}", ui.e(c["report"]["source"])]],
+                        caption=f"{c['target']}: the manual value and the next report disagree. "
+                                "Neither is overwritten.",
+                    )
+                    options = {"manual": f"Keep the manual value ({c['manual']['color'].capitalize()})",
+                               "report": f"Keep the report ({c['report']['color'].capitalize()})",
+                               "both": "Keep both (show the more urgent)"}
+                resolve_form(fips, i, c, options)
+            if not s["contradictions"]:
+                ui.note("No open contradictions.")
+
+            # 5. Reports about this county, as the AI read them (AI mode)
+            if s.get("mode") == "ai" and s["hit"]:
+                ui.section("Reports read by AI")
+                reads = [(rid, ss.ai_reads[rid]) for rid, r in sorted(
+                    sc.reports.items(), key=lambda kv: kv[1]["sim_hour"])
+                    if r["fips"] == fips and r["sim_hour"] <= clock.cursor and rid in ss.ai_reads]
+                if not reads:
+                    ui.note("No report about this county has been read yet.")
+                for rid, res in reads:
+                    rep_row = sc.reports[rid]
+                    head = (f"Hour {rep_row['sim_hour']} · {rep_row['source']} · "
+                            f"verified: {rep_row['verified']}")
+                    with st.expander(head + ("" if res.status == "ok" else f" · {res.message}")):
+                        st.markdown(f"> {rep_row['text']}")
+                        if res.status != "ok":
+                            st.warning(f"{res.message}. This report changes nothing.")
+                        for f in res.accepted:
+                            st.markdown(f"- **Accepted:** {f.lifeline_or_resource} · {f.metric} · "
+                                        f"{f.value} ({f.status_word}) · “{f.quote}”")
+                        for raw, why in res.rejected:
+                            st.markdown(f"- **Rejected** ({why}): `{raw}`")
+                        if res.status == "ok" and not res.accepted and not res.rejected:
+                            st.caption("The AI found no fact it could cite in this report.")
 
             # Shipments to this county, with their delivery status.
             if s["incoming"]:

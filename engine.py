@@ -9,7 +9,7 @@ functions, so it can be tested without a browser.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 
@@ -195,6 +195,8 @@ class Scenario:
     stock: dict  # fips -> {resource: int} at hour 0
     contacts: dict  # fips -> sorted contact hours (reports + feeds, Fix 1)
     report_hours: dict  # fips -> sorted report hours
+    feeds: dict = field(default_factory=dict)  # fips -> [(hour, power % out, cell % out)]
+    reports: dict = field(default_factory=dict)  # report_id -> report row (dict)
 
 
 def build_scenario(geojson: dict, tables: dict) -> Scenario:
@@ -224,6 +226,15 @@ def build_scenario(geojson: dict, tables: dict) -> Scenario:
     contacts = {f: set(hs) for f, hs in report_hours.items()}
     for f, h in zip(feeds["fips"], feeds["hour"]):
         contacts[f].add(int(h))
+    feed_map = {f: [] for f in hit}
+    for row in feeds.to_dict("records"):
+        feed_map[row["fips"]].append(
+            (int(row["hour"]), float(row["power_pct_out"]), float(row["cell_pct_out"])))
+    report_map = {}
+    for row in reports.to_dict("records"):
+        row = dict(row)
+        row["sim_hour"] = int(row["sim_hour"])
+        report_map[str(row["report_id"])] = row
 
     return Scenario(
         names=county_shapes(geojson),
@@ -233,6 +244,8 @@ def build_scenario(geojson: dict, tables: dict) -> Scenario:
         stock=stock_map,
         contacts={f: sorted(hs) for f, hs in contacts.items()},
         report_hours={f: sorted(hs) for f, hs in report_hours.items()},
+        feeds={f: sorted(v) for f, v in feed_map.items()},
+        reports=report_map,
     )
 
 
@@ -250,7 +263,8 @@ def _last_at_or_before(hours: list, cursor: int):
     return last
 
 
-def state_at(cursor: int, events=(), scenario: Scenario | None = None) -> dict:
+def state_at(cursor: int, events=(), scenario: Scenario | None = None,
+             ai_reads: dict | None = None) -> dict:
     """Every county's state at simulated hour `cursor`, from the data and events.
 
     This is the only function that computes state. `events` is the action log
@@ -259,6 +273,11 @@ def state_at(cursor: int, events=(), scenario: Scenario | None = None) -> dict:
     Returns {fips: dict} with: county, hit, color, status_word, lifelines,
     lifelines_as_of, hours_since_contact, last_contact_hour, last_report_hour,
     resources {name: {need, on_hand, in_transit}}, incoming (shipments).
+
+    ai_reads=None is answer-key mode. In AI mode it is {report_id: ReadResult}
+    for the reports read so far: Roads, Water and Health and Medical come from
+    accepted facts, Power and Communications from feeds.csv, and known need
+    from resource requests (Fix 4). The silence rule is the same in both modes.
     """
     sc = scenario or default_scenario()
     cursor = int(cursor)
@@ -297,10 +316,17 @@ def state_at(cursor: int, events=(), scenario: Scenario | None = None) -> dict:
 
         # While silent, nothing new arrives: show what was known at last contact.
         as_of = cursor if not silent else last_contact
-        lifelines = sc.lifelines[(fips, as_of)] if as_of is not None else None
-        need = sc.true_need[(fips, as_of)] if as_of is not None else {}
+        ai_view = None
+        if ai_reads is not None:
+            ai_view = ai_county_view(sc, fips, as_of, ai_reads, events, cursor)
+            lifelines = ai_view["lifelines"] if as_of is not None else None
+            need = ai_view["need"]
+        else:
+            lifelines = sc.lifelines[(fips, as_of)] if as_of is not None else None
+            need = sc.true_need[(fips, as_of)] if as_of is not None else {}
 
-        color = PURPLE if silent else most_urgent(lifelines.values())
+        known = [c for c in (lifelines or {}).values() if c]
+        color = PURPLE if silent else (most_urgent(known) if known else YELLOW)
         out[fips] = {
             "county": name,
             "hit": True,
@@ -321,6 +347,15 @@ def state_at(cursor: int, events=(), scenario: Scenario | None = None) -> dict:
             "manual_marker": False,
             "contradictions": [],
         }
+        if ai_view is not None:
+            s = out[fips]
+            s["mode"] = "ai"
+            s["lifeline_sources"] = ai_view["sources"]
+            s["contradictions"] = list(ai_view["contradictions"])
+            s["no_status_yet"] = not known
+            for r in s["resources"]:
+                s["resources"][r]["need_since"] = ai_view["need_since"].get(r)
+                s["resources"][r]["request"] = ai_view["requests"].get(r)
 
     # Replay the action log up to the cursor: shipments, confirmations and
     # manual status changes. A confirmation moves stock and lowers need; it
@@ -342,7 +377,8 @@ def overlay_color(county_state: dict, overlay: str) -> str:
     color = county_state["color"]
     if overlay == "Overall" or color in (GREY, PURPLE):
         return color
-    return county_state["lifelines"][overlay]
+    # AI mode: a lifeline with no accepted report yet has no color of its own.
+    return county_state["lifelines"][overlay] or GREY
 
 
 # ---- Clock: live head and review cursor (plan v2 Fix 2) --------------------
@@ -519,6 +555,24 @@ STATUS_TARGETS = ("Overall",) + LIFELINES
 MANUAL_COLORS = (RED, YELLOW, GREEN)
 
 
+@dataclass(frozen=True)
+class ResolveContradiction:
+    """A person resolved a contradiction (keep one value, or keep both)."""
+
+    seq: int
+    hour: int
+    role: str
+    fips: str
+    target: str  # lifeline, resource or "Overall"
+    kind: str  # "manual" (manual change vs report) or "ai" (two reports)
+    key: str  # which pair: contradiction_key(...) for "ai"; the target for "manual"
+    choice: str  # "manual" / "report" / "both" (manual); "a" / "b" / "both" (ai)
+    reason: str
+    detail: str = ""
+
+    action = "Resolved contradiction"
+
+
 def is_action(entry, kind) -> bool:
     """Match a log entry to its kind by its action name, not its class object,
     so entries made before a code reload (a session keeps its log) still count."""
@@ -562,9 +616,18 @@ def next_report_on(sc: Scenario, fips: str, target: str, after: int, cursor: int
     return None
 
 
-def manual_outcome(cs: ChangeStatus, cursor: int, sc: Scenario):
-    """("holding" | "cleared" | "contradiction", (hour, value) or None)."""
-    nxt = next_report_on(sc, cs.fips, cs.target, cs.hour, cursor)
+def manual_outcome(cs: ChangeStatus, cursor: int, sc: Scenario, ai_sources=None):
+    """("holding" | "cleared" | "contradiction", (hour, value) or None).
+    In AI mode (ai_sources given) the next report is the first accepted fact on
+    that lifeline after the manual change; Overall is not matched in AI mode."""
+    if ai_sources is not None:
+        src = ai_sources.get(cs.target) or {}
+        if src.get("kind") == "report" and src["hour"] > cs.hour and src.get("color"):
+            nxt = (src["hour"], src["color"])
+        else:
+            nxt = None
+    else:
+        nxt = next_report_on(sc, cs.fips, cs.target, cs.hour, cursor)
     if nxt is None:
         return "holding", None
     return ("cleared" if nxt[1] == cs.color else "contradiction"), nxt
@@ -573,8 +636,9 @@ def manual_outcome(cs: ChangeStatus, cursor: int, sc: Scenario):
 def apply_events(out: dict, cursor: int, events, sc: Scenario) -> None:
     """Replay the log up to `cursor` onto state_at's output (in place)."""
     events = tuple(events)
-    delivered = {}  # (fips, resource) -> quantity confirmed up to cursor
+    delivered = {}  # (fips, resource) -> [(hour confirmed, quantity)] up to cursor
     latest_manual = {}  # (fips, target) -> latest ChangeStatus
+    resolved_manual = {}  # (fips, target) -> ResolveContradiction for it
     for ev in events:
         if ev.hour > cursor:
             continue
@@ -586,8 +650,7 @@ def apply_events(out: dict, cursor: int, events, sc: Scenario) -> None:
                 to["resources"][ev.resource]["in_transit"] += ev.quantity
             else:
                 to["resources"][ev.resource]["on_hand"] += ev.quantity
-                key = (ev.to_fips, ev.resource)
-                delivered[key] = delivered.get(key, 0) + ev.quantity
+                delivered.setdefault((ev.to_fips, ev.resource), []).append((when, ev.quantity))
             to["incoming"].append({
                 "seq": ev.seq, "from": ev.from_fips, "resource": ev.resource,
                 "quantity": ev.quantity, "dispatched": ev.hour, "arrives": ev.arrives,
@@ -595,23 +658,33 @@ def apply_events(out: dict, cursor: int, events, sc: Scenario) -> None:
             })
         elif is_action(ev, ChangeStatus):
             latest_manual[(ev.fips, ev.target)] = ev
+            resolved_manual.pop((ev.fips, ev.target), None)  # a new manual status starts over
+        elif is_action(ev, ResolveContradiction) and ev.kind == "manual":
+            resolved_manual[(ev.fips, ev.target)] = ev
 
     # A confirmed delivery lowers known need (never below 0). Colors untouched.
-    for (fips, resource), qty in delivered.items():
+    for (fips, resource), batches in delivered.items():
         r = out[fips]["resources"][resource]
         if r["need"] is not None:
+            since = r.get("need_since")  # AI mode: only deliveries after the request
+            qty = sum(q for h, q in batches if since is None or h >= since)
             r["need"] = max(0, r["need"] - qty)
 
     # Manual statuses hold until the next report on that lifeline.
     for (fips, target), cs in latest_manual.items():
         s = out[fips]
-        outcome, report = manual_outcome(cs, cursor, sc)
+        outcome, report = manual_outcome(cs, cursor, sc, s.get("lifeline_sources"))
+        res = resolved_manual.get((fips, target))
+        if outcome == "contradiction" and res is not None:
+            outcome = {"manual": "kept manual", "report": "cleared",
+                       "both": "kept both"}[res.choice]
         s["manual"][target] = {
             "color": cs.color, "hour": cs.hour, "role": cs.role, "reason": cs.reason,
             "outcome": outcome, "report": report,
         }
         if outcome == "contradiction":
             s["contradictions"].append({
+                "kind": "manual",
                 "target": target,
                 "manual": {"color": cs.color, "hour": cs.hour,
                            "source": f"Manual change ({cs.role})"},
@@ -623,6 +696,10 @@ def apply_events(out: dict, cursor: int, events, sc: Scenario) -> None:
         if not s["hit"] or s["silent"] or not s["manual"]:
             continue  # purple overrides everything while silent
         active = {t: m for t, m in s["manual"].items() if m["outcome"] != "cleared"}
+        for t, m in active.items():  # kept both: show the more urgent of the two
+            if m["outcome"] == "kept both" and m["report"]:
+                m = dict(m, color=most_urgent([m["color"], m["report"][1]]))
+                active[t] = m
         if not active:
             continue
         s["manual_marker"] = True
@@ -632,7 +709,7 @@ def apply_events(out: dict, cursor: int, events, sc: Scenario) -> None:
         if "Overall" in active:
             s["color"] = active["Overall"]["color"]
         else:
-            s["color"] = most_urgent(s["lifelines"].values())
+            s["color"] = most_urgent([c for c in s["lifelines"].values() if c] or [YELLOW])
         s["status_word"] = STATUS_WORD[s["color"]]
 
 
@@ -774,6 +851,9 @@ def log_rows(events, cursor: int, scenario: Scenario | None = None) -> list[dict
             ship = by_seq[ev.shipment_seq]
             details = f"{shipment_phrase(ship, sc)} (sent hour {ship.hour})"
             status = "Delivered"
+        elif is_action(ev, ResolveContradiction):
+            details = f"{sc.names[ev.fips]} {ev.target}: {ev.detail}"
+            status = "Resolved"
         else:  # ChangeStatus
             details = f"{sc.names[ev.fips]} {ev.target}: set to {ev.color.capitalize()}"
             status = _manual_status_text(ev, cursor, sc)
@@ -846,6 +926,7 @@ MISSING_MESSAGES = {
     "shipment": "Choose the shipment first.",
     "target": "Choose Overall or a lifeline first.",
     "color": "Choose the new color first.",
+    "choice": "Choose which value to keep first.",
 }
 
 
@@ -931,3 +1012,254 @@ def submit_direct_supplies(events, clock: Clock, to_fips: str, role, resource, q
     e = new[-1]
     return new, (f"Logged: {quantity_phrase(e.quantity, e.resource)}, "
                  f"{sc.names[e.from_fips]} to {sc.names[e.to_fips]}. In transit."), True
+
+
+# ===========================================================================
+# Phase 3: AI mode (facts from ai.py; code decides every color)
+# ===========================================================================
+
+AI_LIFELINES = ("Roads", "Water", "Health and Medical")  # read from reports
+FEED_LIFELINES = ("Power", "Communications")  # read from feeds.csv by code
+NEED_UNKNOWN = "No request received, need unknown"
+
+# Status word -> color, from the design doc thresholds (data/README.md vocabulary).
+FACT_COLOR = {
+    "Roads": {"Open": GREEN, "Partly closed": YELLOW, "No route": RED},
+    "Water": {"Normal": GREEN, "Boil notice": YELLOW, "Out": RED},
+    "Health and Medical": {"Normal": GREEN, "On generator": YELLOW,
+                           "Evacuating": RED, "Closed": RED},
+}
+
+
+def power_color(pct: float) -> str:
+    return GREEN if pct < 10 else YELLOW if pct < 50 else RED
+
+
+def comms_color(pct: float) -> str:
+    return GREEN if pct < 10 else YELLOW if pct < 40 else RED
+
+
+def fact_color(f) -> str | None:
+    """The lifeline color a fact stands for, or None if its words don't map."""
+    if f.lifeline_or_resource == "Water" and f.metric == "Systems out of service":
+        try:
+            return RED if float(f.value) > 0 else GREEN
+        except (TypeError, ValueError):
+            return FACT_COLOR["Water"].get(f.status_word)
+    return FACT_COLOR.get(f.lifeline_or_resource, {}).get(f.status_word)
+
+
+def _county_key(name) -> str:
+    n = str(name).strip().lower()
+    return n[:-len(" county")] if n.endswith(" county") else n
+
+
+def contradiction_key(target: str, a, b) -> str:
+    return f"{target}|{a.source}|{a.sim_hour}|{b.source}|{b.sim_hour}"
+
+
+def _fact_info(f, report_id: str) -> dict:
+    return {"kind": "report", "source": f.source, "hour": f.sim_hour, "quote": f.quote,
+            "verified": f.verified, "value": f.value, "status_word": f.status_word,
+            "report_id": report_id, "color": fact_color(f)}
+
+
+def ai_facts_for(sc: Scenario, fips: str, hour: int, ai_reads: dict) -> list:
+    """(fact, report_id) for accepted facts about this county from reports read
+    and dated at or before `hour`. The county comes from the AI's own answer."""
+    name = _county_key(sc.names[fips])
+    out = []
+    for rid, res in ai_reads.items():
+        rep = sc.reports.get(rid)
+        if rep is None or rep["sim_hour"] > hour or getattr(res, "status", "") != "ok":
+            continue
+        for f in res.accepted:
+            if _county_key(f.county) == name:
+                out.append((f, rid))
+    return sorted(out, key=lambda x: x[0].sim_hour)
+
+
+def _resolutions(events, fips: str, cursor: int) -> dict:
+    """key -> ResolveContradiction (kind "ai") made at or before the cursor."""
+    return {ev.key: ev for ev in events
+            if is_action(ev, ResolveContradiction) and ev.kind == "ai"
+            and ev.fips == fips and ev.hour <= cursor}
+
+
+def ai_county_view(sc: Scenario, fips: str, hour, ai_reads: dict, events=(), cursor=None):
+    """AI-mode lifelines, sources, contradictions and known need for one county
+    as of `hour` (the last contact hour while silent)."""
+    import ai as ai_mod  # supersede and the contradiction rule, as built in Phase 3 prep
+
+    cursor = hour if cursor is None else cursor
+    lifelines, sources, contradictions = {}, {}, []
+    need, need_since, requests = {}, {}, {}
+    if hour is None:
+        return {"lifelines": None, "sources": {}, "contradictions": [], "need": {},
+                "need_since": {}, "requests": {}}
+
+    # Power and Communications: the latest feed reading (code, not AI).
+    feed = None
+    for row in sc.feeds.get(fips, ()):
+        if row[0] > hour:
+            break
+        feed = row
+    for ll in FEED_LIFELINES:
+        if feed is None:
+            lifelines[ll] = None
+            sources[ll] = {"kind": "none", "note": "No feed reading yet"}
+            continue
+        pct = feed[1] if ll == "Power" else feed[2]
+        lifelines[ll] = power_color(pct) if ll == "Power" else comms_color(pct)
+        what = "customers out" if ll == "Power" else "cell sites out"
+        sources[ll] = {"kind": "feed", "hour": feed[0], "color": lifelines[ll],
+                       "note": f"Feed reading (code, not AI): {pct:g}% {what}, hour {feed[0]}"}
+
+    facts = ai_facts_for(sc, fips, hour, ai_reads)
+    rid_of = {id(f): rid for f, rid in facts}
+    resolved = _resolutions(events, fips, cursor)
+
+    def topic_facts(target, requests=False):
+        fs = [f for f, _ in facts if f.lifeline_or_resource == target
+              and (f.metric == "Requested") == requests]
+        current, _ = ai_mod.supersede(tuple(fs))
+        dropped = set()
+        both = []
+        open_pairs = []
+        for a, b in ai_mod.find_contradictions(current):
+            key = contradiction_key(target, a, b)
+            res = resolved.get(key)
+            newest = max(f.sim_hour for f in current)
+            if res is None:
+                if newest <= max(a.sim_hour, b.sim_hour):  # nothing newer settles it
+                    open_pairs.append((key, a, b))
+            elif res.choice == "a":
+                dropped.add(id(b))
+            elif res.choice == "b":
+                dropped.add(id(a))
+            else:
+                both.append((a, b))
+        kept = [f for f in current if id(f) not in dropped]
+        return kept, open_pairs, both
+
+    for ll in AI_LIFELINES:
+        kept, open_pairs, both = topic_facts(ll)
+        applied = None
+        skipped_note = ""
+        for f in sorted(kept, key=lambda f: f.sim_hour, reverse=True):
+            c = fact_color(f)
+            if c is None:
+                continue
+            if c == GREEN and f.verified != "Yes":
+                # SKYZR will not let an unverified report turn a county green.
+                skipped_note = (f"An unverified report at hour {f.sim_hour} says this is back "
+                                "to normal; unverified reports can't turn a lifeline green.")
+                continue
+            applied = f
+            break
+        if open_pairs:
+            key, a, b = open_pairs[-1]
+            colors = [c for c in (fact_color(a), fact_color(b)) if c]
+            lifelines[ll] = most_urgent(colors) if colors else None
+            sources[ll] = {"kind": "contradiction", "key": key, "color": lifelines[ll],
+                           "note": "Contradiction: two sources disagree. Resolve to choose."}
+            for k, x, y in open_pairs:
+                contradictions.append({
+                    "kind": "ai", "target": ll, "key": k,
+                    "a": _fact_info(x, rid_of.get(id(x), "")),
+                    "b": _fact_info(y, rid_of.get(id(y), "")),
+                })
+        elif applied is not None:
+            lifelines[ll] = fact_color(applied)
+            sources[ll] = _fact_info(applied, rid_of.get(id(applied), ""))
+            pair = next(((a, b) for a, b in both if applied in (a, b)), None)
+            if pair:
+                lifelines[ll] = most_urgent([fact_color(pair[0]), fact_color(pair[1])])
+                sources[ll]["both"] = [_fact_info(x, rid_of.get(id(x), "")) for x in pair]
+            if skipped_note:
+                sources[ll]["note"] = skipped_note
+        else:
+            lifelines[ll] = None
+            sources[ll] = {"kind": "none", "note": skipped_note or "No report yet"}
+
+    for r, _, _ in RESOURCES:
+        kept, open_pairs, both = topic_facts(r, requests=True)
+        reqs = [f for f in kept if ai_mod._number(f.value) is not None]
+        if not reqs:
+            need[r] = None
+            continue
+        latest = max(reqs, key=lambda f: f.sim_hour)
+        if open_pairs:
+            _, a, b = open_pairs[-1]
+            vals = sorted(int(ai_mod._number(x.value)) for x in (a, b))
+            need[r] = vals[1]  # the larger, shown as a range in the panel
+            need_since[r] = max(a.sim_hour, b.sim_hour)
+            requests[r] = {"range": vals, "contradiction": True}
+            for k, x, y in open_pairs:
+                contradictions.append({
+                    "kind": "ai", "target": r, "key": k,
+                    "a": _fact_info(x, rid_of.get(id(x), "")),
+                    "b": _fact_info(y, rid_of.get(id(y), "")),
+                })
+            continue
+        need[r] = int(ai_mod._number(latest.value))
+        need_since[r] = latest.sim_hour
+        requests[r] = _fact_info(latest, rid_of.get(id(latest), ""))
+        pair = next(((a, b) for a, b in both if latest in (a, b)), None)
+        if pair:
+            vals = sorted(int(ai_mod._number(x.value)) for x in pair)
+            need[r] = vals[1]
+            requests[r]["range"] = vals
+
+    return {"lifelines": lifelines, "sources": sources, "contradictions": contradictions,
+            "need": need, "need_since": need_since, "requests": requests}
+
+
+def resolve_contradiction(events, clock: Clock, fips: str, target: str, kind: str, key: str,
+                          choice: str, role: str, reason: str, sc: Scenario | None = None,
+                          detail: str = "") -> tuple:
+    """Log a resolution. Live hour only; role and reason required."""
+    sc = sc or default_scenario()
+    _require(clock, role, reason)
+    allowed = ("manual", "report", "both") if kind == "manual" else ("a", "b", "both")
+    if choice not in allowed:
+        raise ActionRefused("Choose which value to keep.")
+    entry = ResolveContradiction(
+        seq=len(events) + 1, hour=clock.live_head, role=role, fips=fips, target=target,
+        kind=kind, key=key, choice=choice, reason=str(reason).strip(), detail=detail)
+    return tuple(events) + (entry,)
+
+
+def submit_resolve(events, clock: Clock, fips, target, kind, key, choice, role, reason,
+                   sc: Scenario | None = None, detail: str = ""):
+    """The Resolve form's one-click handler: (events, message, logged)."""
+    missing = _missing(role=role, choice=choice, reason=reason)
+    if missing:
+        return events, _refused("Not resolved.", missing), False
+    try:
+        events = resolve_contradiction(events, clock, fips, target, kind, key, choice,
+                                       role, reason, sc, detail)
+    except ActionRefused as e:
+        return events, f"Not resolved. {e}", False
+    return events, f"Resolved: {detail}. Logged as Resolved contradiction.", True
+
+
+FACT_CSV_COLUMNS = ("report_id",) + (
+    "county", "lifeline_or_resource", "metric", "value", "status_word",
+    "source", "sim_hour", "quote", "verified")
+
+
+def accepted_facts_csv(ai_reads: dict) -> str:
+    """Every accepted fact (report_id plus the nine fields), for the AI-vs-gold check."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(FACT_CSV_COLUMNS)
+    for rid in sorted(ai_reads):
+        res = ai_reads[rid]
+        for f in getattr(res, "accepted", ()):
+            w.writerow([rid, f.county, f.lifeline_or_resource, f.metric, f.value,
+                        f.status_word, f.source, f.sim_hour, f.quote, f.verified])
+    return buf.getvalue()

@@ -153,7 +153,7 @@ def test_client_failure_changes_nothing(reports, error):
     assert result.message == "AI unavailable: report not processed"
     assert result.accepted == () and result.rejected == ()
     assert result.report_text == reports["R03"]["text"]  # raw report stays visible
-    assert intake._cache == {}  # a failure is never cached
+    assert len(intake.cache) == 0  # a failure is never cached
 
 
 def test_client_timeout_changes_nothing(reports, monkeypatch):
@@ -162,9 +162,17 @@ def test_client_timeout_changes_nothing(reports, monkeypatch):
     assert result.status == "unavailable" and result.accepted == ()
 
 
-def test_real_client_is_not_built():
-    with pytest.raises(NotImplementedError):
-        ai.ClaudeClient().extract({})
+def test_real_client_request_holds_only_the_payload_and_no_key():
+    """Superseded the Phase 3 prep stub test: the real client is built now."""
+    client = ai.ClaudeClient(api_key="test-not-a-key")
+    payload = {"sim_hour": 3, "source": "S", "verified": "no", "text": "T"}
+    req = client.request(payload)
+    assert req["model"] == "claude-haiku-5-5"
+    assert req["max_tokens"] <= 800
+    assert req["tool_choice"] == {"type": "tool", "name": ai.TOOL_NAME}
+    assert [t["name"] for t in req["tools"]] == [ai.TOOL_NAME]
+    assert req["messages"] == [{"role": "user", "content": ai.user_message(payload)}]
+    assert "test-not-a-key" not in repr(req)
 
 
 # ---- Cache and call cap ----------------------------------------------------------------
