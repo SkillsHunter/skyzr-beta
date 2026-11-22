@@ -19,8 +19,10 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import json
+import logging
 import re
 import threading
+from collections import Counter
 from dataclasses import dataclass, field
 
 # ---- Messages and limits ----------------------------------------------------------
@@ -83,6 +85,31 @@ class ReadResult:
     accepted: tuple = ()  # Fact, ...
     rejected: tuple = ()  # (raw fact dict, reason), ...
     from_cache: bool = False
+    detail: str = ""  # why a call failed (class, HTTP code, API message); never the key
+
+
+# ---- Failure reasons (Phase 3C) ----------------------------------------------------------
+
+log = logging.getLogger("skyzr.ai")
+_KEY_PATTERN = re.compile(r"AIza[0-9A-Za-z_-]+")
+REASON_MAX_CHARS = 300
+
+
+def scrub(text) -> str:
+    """Remove anything that looks like a Google API key."""
+    return _KEY_PATTERN.sub("[key removed]", str(text))
+
+
+def failure_reason(err) -> str:
+    """A short, safe reason: exception class, HTTP status code if any, and the
+    API's own message cut to 300 characters. The key pattern is removed."""
+    parts = [type(err).__name__]
+    code = getattr(err, "code", None)
+    if isinstance(code, int):
+        parts.append(str(code))
+    message = getattr(err, "message", None) or str(err)
+    head = " ".join(parts)
+    return scrub(f"{head}: {scrub(message)[:REASON_MAX_CHARS]}" if message else head)
 
 
 # ---- Quote check (plan v2 Fix 5) ---------------------------------------------------
@@ -245,8 +272,10 @@ class Intake:
             raw = _call(self.client, payload_for(report), CALL_TIMEOUT_SECONDS)
             if not isinstance(raw, (list, tuple)):
                 raise ValueError("model output is not a list of facts")
-        except Exception:  # noqa: BLE001
-            return ReadResult(rid, "unavailable", AI_UNAVAILABLE, report["text"])
+        except Exception as err:  # noqa: BLE001
+            reason = failure_reason(err)
+            log.warning("AI call failed for %s: %s", rid, reason)  # server log is owner-only
+            return ReadResult(rid, "unavailable", AI_UNAVAILABLE, report["text"], detail=reason)
         self.cache.put(key, list(raw))  # only successful calls are cached
         accepted, rejected = check_facts(raw, report)
         return ReadResult(rid, "ok", "", report["text"], accepted, rejected)
@@ -337,6 +366,9 @@ MAX_OUTPUT_TOKENS = 800
 RATE_LIMIT_RETRIES = 2  # HTTP 429: wait and retry at most twice, within the 30 s budget
 RATE_LIMIT_WAIT_SECONDS = 4.0  # first wait; doubled for the second
 PREPARE_SECONDS_PER_CALL = 7.0  # Prepare pacing: about 8 calls a minute, under free-tier limits
+GEMINI_THINKING_MODES = ("minimal", "off")  # Secrets GEMINI_THINKING; "off" sends no thinking config
+GEMINI_SCHEMA_MODES = ("full", "loose")  # Secrets GEMINI_SCHEMA; "loose" sends no response schema
+PREPARE_FAIL_FAST = 3  # Prepare stops if its first 3 calls all fail with the same reason
 
 LIFELINE_VOCAB = ("Roads", "Water", "Health and Medical")
 METRIC_VOCAB = ("Route status", "Systems out of service", "System status",
@@ -425,17 +457,26 @@ class GeminiClient:
     prepare_seconds_per_call = PREPARE_SECONDS_PER_CALL
 
     def __init__(self, api_key: str | None = None, model: str | None = None,
-                 sdk_client=None, sleep=None):
-        if api_key is None or model is None:
+                 sdk_client=None, sleep=None, thinking: str | None = None,
+                 schema: str | None = None):
+        if api_key is None or model is None or thinking is None or schema is None:
             import streamlit as st  # only here: ai.py stays importable without Streamlit
+
+            def secret(name, default):
+                try:
+                    return st.secrets.get(name) or default
+                except Exception:  # noqa: BLE001 - no secrets file: the default
+                    return default
+
             if api_key is None:
                 api_key = st.secrets["GEMINI_API_KEY"]
-            if model is None:
-                try:
-                    model = st.secrets.get("GEMINI_MODEL") or GEMINI_MODEL
-                except Exception:  # noqa: BLE001 - no secrets file: use the default model
-                    model = GEMINI_MODEL
-        self.model = model
+            model = model or secret("GEMINI_MODEL", GEMINI_MODEL)
+            thinking = thinking or secret("GEMINI_THINKING", "minimal")
+            schema = schema or secret("GEMINI_SCHEMA", "full")
+        thinking, schema = str(thinking).strip().lower(), str(schema).strip().lower()
+        if thinking not in GEMINI_THINKING_MODES or schema not in GEMINI_SCHEMA_MODES:
+            raise ValueError("GEMINI_THINKING must be minimal or off; GEMINI_SCHEMA full or loose")
+        self.model, self.thinking, self.schema = model, thinking, schema
         self.cache_name = f"gemini:{model}"
         if sdk_client is None:
             from google import genai
@@ -452,15 +493,18 @@ class GeminiClient:
 
     def config(self, timeout_s: float) -> dict:
         """The generation settings (no key in them), so tests can check them."""
-        return {
+        cfg = {
             "system_instruction": SYSTEM_PROMPT,
             "temperature": 0,
             "max_output_tokens": MAX_OUTPUT_TOKENS,
             "response_mime_type": "application/json",
-            "response_json_schema": FACT_SCHEMA,
-            "thinking_config": {"thinking_level": "MINIMAL"},  # keep the call fast
             "http_options": {"timeout": max(1000, int(timeout_s * 1000))},
         }
+        if getattr(self, "schema", "full") == "full":
+            cfg["response_json_schema"] = FACT_SCHEMA  # "loose": the parser alone checks shape
+        if getattr(self, "thinking", "minimal") == "minimal":
+            cfg["thinking_config"] = {"thinking_level": "MINIMAL"}  # keep the call fast
+        return cfg
 
     def extract(self, payload: dict):
         import time
@@ -522,3 +566,65 @@ class ScriptedClient:
         if self.fail:
             raise RuntimeError("scripted failure")
         return [dict(f) for f in self.table.get(normalize(payload["text"]), [])]
+
+
+# ---- Prepare AI reading (Phase 3C: reasons and fail fast) -------------------------------
+
+@dataclass
+class PrepareResult:
+    results: list
+    stopped_early: bool = False
+    reasons: Counter = field(default_factory=Counter)
+
+    @property
+    def ok(self) -> int:
+        return sum(1 for r in self.results if r.status == "ok")
+
+
+def prepare(intake: Intake, reports, pace: float = 0.0, sleep=None, monotonic=None,
+            on_progress=None) -> PrepareResult:
+    """Read every report once to fill the server cache. Cached reports are
+    skipped (no call). Real calls are paced `pace` seconds apart. If the first
+    PREPARE_FAIL_FAST calls all fail with the same reason, stop there."""
+    import time
+
+    sleep = sleep or time.sleep
+    monotonic = monotonic or time.monotonic
+    out = PrepareResult([])
+    calls, last_call = [], None
+    reports = list(reports)
+    for i, r in enumerate(reports, 1):
+        cached = intake.cached(r)
+        if not cached and pace and last_call is not None:
+            wait = pace - (monotonic() - last_call)
+            if wait > 0:
+                sleep(wait)
+        if not cached:
+            last_call = monotonic()
+        res = intake.read(r)
+        out.results.append(res)
+        if res.status != "ok":
+            out.reasons[res.detail or res.message] += 1
+        if not cached:
+            calls.append(res)
+        if on_progress:
+            on_progress(i, len(reports))
+        first = calls[:PREPARE_FAIL_FAST]
+        if (len(calls) == PREPARE_FAIL_FAST and all(c.status != "ok" for c in first)
+                and len({c.detail or c.message for c in first}) == 1):
+            out.stopped_early = True
+            break
+    return out
+
+
+def prepare_summary(res: PrepareResult, total: int) -> str:
+    """One line per distinct failure reason, with counts."""
+    lines = [f"Prepared: {res.ok} of {total} reports read and cached."]
+    if res.stopped_early:
+        reason = next(iter(res.reasons))
+        lines.append(f"Stopped early: the first {PREPARE_FAIL_FAST} calls all failed with the "
+                     f"same reason: {reason}. Fix the setting (for example GEMINI_MODEL, "
+                     "GEMINI_THINKING or GEMINI_SCHEMA in Secrets) and press Prepare again.")
+    for reason, n in res.reasons.most_common():
+        lines.append(f"{n} × {reason}")
+    return scrub("\n".join(lines))

@@ -364,23 +364,18 @@ with st.container(border=True):
                                        f"{max(1, round(todo * pace / 60))} minute(s). Keep this tab open."
                                        if pace and todo else ""))
                 bar = st.progress(0.0, text="Reading reports…")
-                results = []
-                last_call = 0.0
-                for i, r in enumerate(all_reports, 1):
-                    if pace and not ss.intake.cached(r):
-                        wait = pace - (time.monotonic() - last_call)
-                        if last_call and wait > 0:
-                            time.sleep(wait)
-                        last_call = time.monotonic()
-                    results.append(ss.intake.read(r))
-                    bar.progress(i / len(all_reports), text=f"Read {i} of {len(all_reports)}")
-                ok = sum(1 for x in results if x.status == "ok")
-                (st.success if ok == len(results) else st.warning)(
-                    f"Prepared: {ok} of {len(results)} reports read and cached. "
-                    + ("" if ok == len(results) else
-                       f"{len(results) - ok} were not processed: they are tried again at their "
-                       "hour, or press Prepare again to retry only those. ")
+                prep = ai.prepare(
+                    ss.intake, all_reports, pace=pace,
+                    on_progress=lambda i, n: bar.progress(i / n, text=f"Read {i} of {n}"))
+                summary = ai.prepare_summary(prep, len(all_reports))
+                ok_all = prep.ok == len(all_reports)
+                (st.success if ok_all else st.warning)(summary.split("\n")[0] + (
+                    "" if ok_all else " Reports not read are tried again at their hour, or "
+                    "press Prepare again to retry only those. ")
                     + "Facts take effect only when the clock reaches each report's hour.")
+                if prep.reasons:
+                    st.markdown("**Why calls failed (AI unavailable):**\n\n"
+                                + "\n".join(f"- {ui.e(line)}" for line in summary.split("\n")[1:]))
                 # Failed reads aren't kept, so each is tried again at its hour.
         st.download_button(
             "Export accepted facts (CSV)",
@@ -849,6 +844,8 @@ with panel_col:
                         st.markdown(f"> {rep_row['text']}")
                         if res.status != "ok":
                             st.warning(f"{res.message}. This report changes nothing.")
+                            if res.detail:
+                                st.caption(f"Reason: {ai.scrub(res.detail)}")
                         for f in res.accepted:
                             st.markdown(f"- **Accepted:** {f.lifeline_or_resource} · {f.metric} · "
                                         f"{f.value} ({f.status_word}) · “{f.quote}”")

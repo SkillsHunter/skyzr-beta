@@ -383,3 +383,99 @@ def test_gemini_good_response_goes_through_the_quote_check():
     assert res.status == "ok" and len(res.accepted) == 1 and len(res.rejected) == 1
     cfg = sdk.calls[0]["config"]
     assert cfg["temperature"] == 0 and cfg["response_json_schema"] == ai.FACT_SCHEMA
+
+
+# ---- Phase 3C: failure reasons, fail fast, Secrets switches ------------------------------
+
+FAKE_KEY = "AIza" + "SyFAKEfakeFAKEfake_0123456789-abcdefg"
+
+
+def api_error(code, message):
+    return genai_errors.ClientError(
+        code, {"error": {"code": code, "status": "X", "message": message}})
+
+
+@pytest.mark.parametrize("code,msg", [
+    (400, "Invalid value at 'generation_config.thinking_config.thinking_level'"),
+    (404, "models/gemini-3.8-flash is not found for API version v1beta"),
+])
+def test_failure_reason_is_recorded_with_code_and_message(code, msg):
+    sdk = RecordingSDK([api_error(code, msg)])
+    res = ai.Intake(ai.GeminiClient(api_key="k", model="m", sdk_client=sdk)).read(ALL[0])
+    assert res.status == "unavailable" and res.message == ai.AI_UNAVAILABLE
+    assert res.detail.startswith(f"ClientError {code}: ") and msg[:30] in res.detail
+
+
+def test_failure_reason_never_contains_the_key_and_is_short():
+    err = api_error(400, f"API key {FAKE_KEY} not valid. " + "x" * 1000)
+    reason = ai.failure_reason(err)
+    assert "AIza" not in reason and len(reason) < 360
+    res = ai.Intake(ai.GeminiClient(api_key=FAKE_KEY, model="m",
+                                    sdk_client=RecordingSDK([err]))).read(ALL[0])
+    assert "AIza" not in res.detail
+    summary = ai.prepare_summary(ai.PrepareResult([res], reasons=__import__("collections").Counter({res.detail: 1})), 1)
+    assert "AIza" not in summary and "AIza" not in ai.scrub(f"key={FAKE_KEY}")
+
+
+def test_failure_is_logged_once(caplog):
+    sdk = RecordingSDK([api_error(404, "model not found")])
+    with caplog.at_level("WARNING", logger="skyzr.ai"):
+        ai.Intake(ai.GeminiClient(api_key="k", model="m", sdk_client=sdk)).read(ALL[0])
+    assert sum("model not found" in r.getMessage() for r in caplog.records) == 1
+
+
+def test_prepare_summary_lists_reasons_with_counts():
+    sdk = RecordingSDK([api_error(400, "bad schema"), api_error(404, "no model"),
+                        api_error(400, "bad schema")] + [{"facts": []}] * 10)
+    intake = ai.Intake(ai.GeminiClient(api_key="k", model="m", sdk_client=sdk))
+    res = ai.prepare(intake, ALL[:6], pace=0)
+    assert not res.stopped_early and len(res.results) == 6 and res.ok == 3
+    text = ai.prepare_summary(res, 6)
+    assert "Prepared: 3 of 6" in text
+    assert "2 × ClientError 400: bad schema" in text and "1 × ClientError 404: no model" in text
+
+
+def test_prepare_stops_after_three_identical_failures():
+    sdk = RecordingSDK([api_error(400, "thinking_level not supported")] * 50)
+    intake = ai.Intake(ai.GeminiClient(api_key="k", model="m", sdk_client=sdk))
+    slept = []
+    res = ai.prepare(intake, ALL, pace=7, sleep=slept.append, monotonic=lambda: 0.0)
+    assert res.stopped_early and len(res.results) == 3 and len(sdk.calls) == 3
+    assert len(slept) == 2  # paced between real calls only
+    text = ai.prepare_summary(res, len(ALL))
+    assert "Stopped early" in text and "3 × ClientError 400: thinking_level" in text
+
+
+def test_prepare_skips_cached_reports_and_keeps_going_on_mixed_failures():
+    client = fake_ai.client()
+    intake = ai.Intake(client)
+    intake.read(ALL[0])
+    n = len(client.payloads)
+    res = ai.prepare(intake, ALL[:5], pace=0)
+    assert len(client.payloads) == n + 4 and res.results[0].from_cache and res.ok == 5
+
+
+@pytest.mark.parametrize("thinking,schema", [("minimal", "full"), ("off", "full"),
+                                             ("minimal", "loose"), ("off", "loose")])
+def test_secrets_switches_change_the_config(monkeypatch, thinking, schema):
+    monkeypatch.setattr(_st, "secrets", {"GEMINI_API_KEY": "k", "GEMINI_THINKING": thinking,
+                                         "GEMINI_SCHEMA": schema})
+    cfg = ai.GeminiClient(sdk_client=RecordingSDK([])).config(30)
+    assert ("thinking_config" in cfg) == (thinking == "minimal")
+    assert ("response_json_schema" in cfg) == (schema == "full")
+    assert cfg["response_mime_type"] == "application/json"
+
+
+def test_secrets_defaults_are_minimal_and_full(monkeypatch):
+    monkeypatch.setattr(_st, "secrets", {"GEMINI_API_KEY": "k"})
+    c = ai.GeminiClient(sdk_client=RecordingSDK([]))
+    assert (c.thinking, c.schema) == ("minimal", "full")
+    cfg = c.config(30)
+    assert cfg["thinking_config"] == {"thinking_level": "MINIMAL"}
+    assert cfg["response_json_schema"] == ai.FACT_SCHEMA
+
+
+def test_loose_schema_still_rejects_malformed_output():
+    sdk = RecordingSDK([{"facts": [{"county": "Robeson"}]}])
+    c = ai.GeminiClient(api_key="k", model="m", sdk_client=sdk, thinking="off", schema="loose")
+    assert ai.Intake(c).read(ALL[0]).status == "unavailable"
