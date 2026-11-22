@@ -1,0 +1,51 @@
+report_id,sim_hour,county,fips,source,verified,text
+R01,2,New Hanover,37129,New Hanover County Emergency Management (fictional),yes,"Storm surge has closed both bridges and flooded I-40 and US 17. As of now there is no open route into Wilmington, the county seat."
+R02,3,Brunswick,37019,Social media post (unverified),no,"the bridge to oak island just collapsed, nobody can get in or out of brunswick county!!! share this"
+R03,5,New Hanover,37129,New Hanover County water authority (fictional),yes,The main treatment plant has storm damage. A boil-water notice is in effect for all customers until further notice.
+R04,6,New Hanover,37129,New Hanover County hospital liaison (fictional),yes,A hospital in Wilmington is on generator power and diverting ambulances to inland hospitals.
+R05,7,Onslow,37133,Social media post (unverified),no,"no water coming out of the taps anywhere in onslow county, stores are out of bottled water already"
+R06,8,Pender,37141,Pender County Emergency Management (fictional),yes,Flooding is getting worse. Roads east of I-40 are under water and there is no open route to the county seat. We may lose contact soon.
+R07,9,Columbus,37047,Columbus County Emergency Management (fictional),yes,About a third of primary routes are closed. Whiteville is still reachable from the south.
+R08,10,Bladen,37017,Bladen County Emergency Management (fictional),yes,Two water systems are out of service and a hospital in the county is on generator.
+R09,10,Brunswick,37019,Brunswick County Emergency Management (fictional),yes,"Several primary routes are closed by flooding, including NC 133. US 17 south of Bolivia remains passable."
+R10,11,New Hanover,37129,New Hanover County Emergency Management (fictional),yes,"Requesting seven generators for the shelters and the water plant, and one water tanker."
+R11,12,Sampson,37163,Sampson County Emergency Management (fictional),yes,"Primary routes are open, though some secondary roads are closed. Two shelters are open in Clinton."
+R12,14,Onslow,37133,Onslow County Emergency Management (fictional),yes,The county water system is operating normally. Reports of dry taps are not accurate.
+R13,14,Robeson,37155,Robeson County Emergency Management (fictional),yes,"As of this hour three municipal water systems are offline, and a hospital in Lumberton is on generator."
+R14,15,Cumberland,37051,Cumberland County Emergency Management (fictional),yes,"I-95 is closed in both directions at the river, and flooding has cut every route into Fayetteville. There is no open route to the county seat."
+R15,16,Columbus,37047,Columbus County Emergency Management (fictional),yes,Four shelters are open. We need about two hundred cots.
+R16,16,Robeson,37155,Robeson County Emergency Management (fictional),yes,Requesting four water tankers and roughly sixteen portable toilet and handwashing units for Lumberton.
+R17,17,Hoke,37093,Hoke County Emergency Management (fictional),yes,"Several primary routes are closed by downed trees, and Raeford is under a boil-water notice."
+R18,18,Cumberland,37051,"State DOT district office, Cumberland County (fictional)",yes,Crews have reopened I-95 and US 401 into Fayetteville. Only some primary routes remain closed.
+R19,19,Columbus,37047,Columbus County Emergency Management (fictional),yes,"Correction to our earlier request: we need one hundred twenty cots, not two hundred."
+R20,20,Cumberland,37051,Cumberland County Emergency Management (fictional),yes,"We need three search-and-rescue teams for flooded neighborhoods east of the river, plus five generators."
+R21,20,Harnett,37085,Harnett County Emergency Management (fictional),yes,The main hospital is on generator and diverting non-critical patients.
+R22,21,Scotland,37165,Scotland County Emergency Management (fictional),yes,Laurinburg's water system is out of service. Roads are open.
+R23,22,Moore,37125,Moore County water utility (fictional),yes,Two water systems are out of service in the southern part of the county.
+R24,23,Harnett,37085,Harnett County hospital liaison (fictional),yes,"Flooding reached the ground floor, and the main hospital has begun evacuating patients."
+R25,24,Richmond,37153,Richmond County Emergency Management (fictional),yes,"Some primary routes are closed, and a hospital in the county is on generator."
+R26,25,Moore,37125,Moore County Emergency Management (fictional),yes,"We now count five water systems out of service, mostly in the south of the county."
+R27,26,Guilford,37081,Guilford County Emergency Management (fictional),yes,Flooding on I-40 and I-85 has closed every route into Greensboro. No open route to the county seat at this time.
+R28,26,Harnett,37085,Harnett County Emergency Management (fictional),yes,We are requesting two medical teams for the county.
+R29,28,Lee,37105,Lee County Emergency Management (fictional),yes,A boil-water notice is in effect for Sanford.
+R30,29,Guilford,37081,"State DOT district office, Guilford County (fictional)",yes,I-85 has reopened. Some primary routes into Greensboro remain closed.
+R31,30,Sampson,37163,Sampson County Emergency Management (fictional),yes,We need about forty cots for the shelter at the high school.
+R32,31,Chatham,37037,Chatham County Emergency Management (fictional),yes,Some primary routes are closed by flooding along the Haw River.
+R33,32,Randolph,37151,Randolph County hospital liaison (fictional),yes,A hospital in Asheboro is on generator power but still taking patients.
+R34,33,Sampson,37163,Sampson County shelter manager (fictional),yes,Shelter numbers have grown overnight. We need roughly one hundred ten cots and shelter kits.
+R35,36,Bladen,37017,Bladen County Emergency Management (fictional),yes,"Contact restored. One water system is still out of service, and a hospital in the county has closed and moved its patients to Fayetteville."
+R36,36,Pender,37141,Pender County Emergency Management (fictional),yes,"We have contact again. There is still no open route to the county seat, the water system is out of service, and we need four water tankers."
+R37,38,Alamance,37001,Alamance County Emergency Management (fictional),yes,A boil-water notice is in effect in Burlington.
+R38,39,Montgomery,37123,Montgomery County Emergency Management (fictional),yes,"We are back in touch. Several primary routes were closed by mudslides and remain closed, and one water system is under a boil-water notice."
+R39,40,Scotland,37165,Social media post (unverified),no,"water is back everywhere in scotland county, laurinburg all good now!!"
+R40,42,Rockingham,37157,Rockingham County Emergency Management (fictional),yes,Some primary routes are closed by flooding on the Dan River.
+R41,44,Cumberland,37051,Cumberland County Emergency Management (fictional),yes,"Routes into Fayetteville have reopened, but some primary routes are still closed."
+R42,46,New Hanover,37129,New Hanover County Emergency Management (fictional),yes,"One bridge into Wilmington has reopened, so there is a route into the county seat again, though some primary routes remain closed."
+R43,48,Robeson,37155,Robeson County Emergency Management (fictional),yes,Requesting thirteen pallets of meals and about one hundred hygiene kits for the shelters.
+R44,50,Robeson,37155,Robeson County Emergency Management (fictional),yes,"All three water systems are back in service, but a boil-water notice remains in effect."
+R45,51,Caswell,37033,Caswell County Emergency Management (fictional),yes,"Contact restored. Some primary routes are closed, and Yanceyville's water system is under a boil-water notice."
+R46,52,Harnett,37085,Harnett County hospital liaison (fictional),yes,The main hospital has reopened to patients but is still on generator.
+R47,54,New Hanover,37129,New Hanover County water authority (fictional),yes,The boil-water notice has been lifted for all customers.
+R48,56,Hoke,37093,Hoke County Emergency Management (fictional),yes,"All primary routes are open, and the boil-water notice for Raeford has been lifted."
+R49,60,Moore,37125,Moore County Emergency Management (fictional),yes,All water systems in the county are back in service.
+R50,66,Brunswick,37019,Brunswick County Emergency Management (fictional),yes,All primary routes are open again.
