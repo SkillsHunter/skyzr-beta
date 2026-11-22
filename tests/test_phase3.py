@@ -248,3 +248,30 @@ def test_ai_mode_with_failing_client_shows_unavailable(monkeypatch):
     assert ai.AI_UNAVAILABLE in expanders
     s = engine.state_at(22, (), SC, reads)[FIPS["Robeson"]]
     assert s["lifelines"]["Water"] is None and s["resources"]["Water"]["need"] is None
+
+
+# ---- Gold review rule: a Water count of 0 means Normal ------------------------------------
+
+@pytest.mark.parametrize("status", ["Out", "Normal", "Boil notice"])
+def test_water_count_of_zero_is_normal_whatever_the_status_word(status):
+    f = ai.Fact("Robeson", "Water", "Systems out of service", 0, status,
+                "S", 50, "All three water systems are back in service", "Yes")
+    assert engine.fact_color(f) == engine.GREEN
+    assert engine.fact_color(f._replace(value=1) if hasattr(f, "_replace")
+                             else ai.Fact(**{**f.__dict__, "value": 1})) == engine.RED
+
+
+def test_water_count_of_zero_never_makes_water_red_or_yellow():
+    text = SC.reports["R44"]["text"]  # "All three water systems are back in service, ..."
+    client = ai.ScriptedClient({text: [
+        {"county": "Robeson", "lifeline_or_resource": "Water", "metric": "Systems out of service",
+         "value": 0, "status_word": "Out", "quote": "All three water systems are back in service"}]})
+    reads = read_all(client, upto=50)
+    s = county(50, "Robeson", reads)
+    assert s["lifelines"]["Water"] == engine.GREEN  # verified report, 0 out: Normal
+    assert s["lifeline_sources"]["Water"]["value"] == 0
+
+
+def test_model_is_told_a_zero_count_is_normal():
+    assert "All three water systems are back in service\" = Systems out of service, 0, Normal" \
+        in ai.SYSTEM_PROMPT

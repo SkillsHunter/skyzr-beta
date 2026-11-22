@@ -1042,6 +1042,8 @@ def comms_color(pct: float) -> str:
 def fact_color(f) -> str | None:
     """The lifeline color a fact stands for, or None if its words don't map."""
     if f.lifeline_or_resource == "Water" and f.metric == "Systems out of service":
+        # Gold review rule: a count of 0 means no system is out. It is Normal
+        # (green) whatever status word comes back, and never red or yellow.
         try:
             return RED if float(f.value) > 0 else GREEN
         except (TypeError, ValueError):

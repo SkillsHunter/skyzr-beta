@@ -342,7 +342,7 @@ SYSTEM_PROMPT = """You read one field report from a fictional hurricane exercise
 
 Extract only these kinds of fact:
 - Roads: metric "Route status"; status_word Open, Partly closed or No route; value "Open", "Some primary routes closed" or "No open route to county seat".
-- Water: metric "Systems out of service" with status_word "Out" and the number of systems out as value whenever a count is stated or clear ("the water system" = 1); otherwise metric "System status" with status_word Normal, Boil notice or Out and value "Normal", "Boil-water notice" or "System out of service".
+- Water: metric "Systems out of service" with the number of systems out as value whenever a count is stated or clear ("the water system" = 1), and status_word "Out". A count of 0 means no system is out: its status_word is "Normal", never "Out" (e.g. "All three water systems are back in service" = Systems out of service, 0, Normal). Otherwise metric "System status" with status_word Normal, Boil notice or Out and value "Normal", "Boil-water notice" or "System out of service".
 - Health and Medical: metric "Hospital status"; status_word Normal, On generator, Evacuating or Closed; value "Normal", "Hospital on generator or diverting" or "Hospital closed or evacuating".
 - Resource requests: lifeline_or_resource one of Water, Generators, Utility crews, Search-and-rescue teams, Food, Shelter, Medical teams, Hygiene items, Sanitation; metric "Requested"; status_word "Requested"; value the number requested, as a number.
 
@@ -365,7 +365,7 @@ FACT_SCHEMA = {
                     "lifeline_or_resource": {
                         "type": "string", "enum": list(LIFELINE_VOCAB + RESOURCE_NAMES)},
                     "metric": {"type": "string", "enum": list(METRIC_VOCAB)},
-                    "value": {"type": ["string", "number"]},
+                    "value": {"anyOf": [{"type": "string"}, {"type": "number"}]},
                     "status_word": {"type": "string", "enum": list(STATUS_VOCAB)},
                     "quote": {"type": "string"},
                 },
@@ -459,6 +459,8 @@ class ScriptedClient:
         self.table = {normalize(k): v for k, v in (table or {}).items()}
         self.fail = fail
         self.payloads = []
+        # A failing double has its own cache space, so cached answers don't hide the failure.
+        self.cache_name = "scripted-fail" if fail else "scripted"
 
     def extract(self, payload: dict):
         self.payloads.append(dict(payload))

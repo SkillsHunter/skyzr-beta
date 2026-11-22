@@ -814,6 +814,9 @@ with panel_col:
                 resolve_form(fips, i, c, options)
             if not s["contradictions"]:
                 ui.note("No open contradictions.")
+                # A resolution removes its form; still show its result at the hour it happened.
+                for k in [k for k in ss.get("form_msgs", {}) if k.startswith(f"rs_{fips}_")]:
+                    show_form_msg(k)
 
             # 5. Reports about this county, as the AI read them (AI mode)
             if s.get("mode") == "ai" and s["hit"]:

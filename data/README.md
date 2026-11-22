@@ -23,7 +23,7 @@ Use exactly these strings, so AI output can be matched against the scoring key.
 | kind | lifeline_or_resource | metric | status_word | value |
 |---|---|---|---|---|
 | lifeline | Roads | Route status | Open, Partly closed, No route | Open / Some primary routes closed / No open route to county seat |
-| lifeline | Water | Systems out of service | Out | the number of systems out (use this whenever a count is stated or clear, e.g. "the water system" = 1) |
+| lifeline | Water | Systems out of service | Out, or Normal when the count is 0 | the number of systems out (use this whenever a count is stated or clear, e.g. "the water system" = 1). **0 means no system is out: status_word "Normal", never "Out"**, e.g. "All three water systems are back in service" = Systems out of service, 0, Normal. A count of 0 can never make Water red or yellow by itself |
 | lifeline | Water | System status | Normal, Boil notice, Out | Normal / Boil-water notice / System out of service (when no count is given) |
 | lifeline | Health and Medical | Hospital status | Normal, On generator, Evacuating, Closed | Normal / Hospital on generator or diverting / Hospital closed or evacuating |
 | resource | Water, Generators, Utility crews, Search-and-rescue teams, Food, Shelter, Medical teams, Hygiene items, Sanitation | Requested | Requested | the number requested |
