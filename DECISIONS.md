@@ -51,3 +51,15 @@ Every item here is a Proposal (design doc) or a plan v2 Fix. If the team says no
 | The log is a tuple of frozen entries; adding returns a new tuple. Nothing in the engine edits or deletes an entry | Design doc: no one can edit or delete a log entry | `engine.DirectSupplies`, `engine.direct_supplies` | n/a |
 | A refused action raises `ActionRefused` and logs nothing | Design doc: Confirm stays disabled until valid | `engine.ActionRefused` | n/a |
 | Reviewing an hour before a dispatch shows the stock as it was then (the log is replayed up to the cursor) | Plan v2 Fix 2: everything recomputed from the log up to the cursor | `engine.apply_events` | n/a |
+
+## Added in Phase 2B-safe (branch phase-2)
+
+| Item | Source | Where it lives | If the team says no |
+|---|---|---|---|
+| Role picker: a label at the top of the page (Situation analyst, Logistics, Operations chief, Other), no password, stamped on every action. Starts empty; Direct supplies asks for a role first | Design doc p. 3, **Proposal** | `engine.ROLES`; `app.py` role selectbox | Remove the picker and stamp a fixed role, e.g. "Other" |
+| Every sent shipment reads "In transit" on screen and in the CSV, including after its transit time, until delivery confirmation is decided | Team instruction for Phase 2B-safe; design doc p. 8 | `engine.display_status` | Phase 2B shows arrival and confirmation |
+| Sending list: every other county (hit or grey), alphabetical by name only, each with its on-hand stock of the chosen resource. Counties with 0 are listed too, so the list is never filtered by stock | Design doc p. 7 | `engine.sender_options` | Hide counties with 0 stock (a filter, still alphabetical) |
+| Nothing is preselected: resource, quantity, sender and reason all start empty, and the form clears after each send | Design doc: SKYZR never suggests a sender or quantity | `app.direct_supplies_form` | n/a |
+| The log panel shows entries made at or before the hour on screen; the CSV exports the whole log as of the live hour | Plan v2 Fix 2 (screen recomputed up to the cursor); Fix 3 (CSV is the lasting copy) | `engine.log_rows`, `engine.log_csv` | Export only what's on screen |
+| Details read "2 water tankers, Wake to Robeson" using a fixed noun per resource | Design doc p. 4 example | `engine.DETAIL_NOUN` | Change the nouns |
+| Streamlit's table toolbar (with its own download) is hidden, so the log's button is the only CSV export | Team instruction | `ui.CSS` | n/a |

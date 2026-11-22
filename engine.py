@@ -496,23 +496,75 @@ def apply_events(out: dict, cursor: int, events) -> None:
         )
 
 
+ROLES = ("Situation analyst", "Logistics", "Operations chief", "Other")  # Proposal
+LOG_COLUMNS = ("Simulated time", "Role", "Action", "Details", "Reason", "Status")
+
+# How a quantity reads in the log, e.g. "2 water tankers".
+DETAIL_NOUN = {
+    "Water": "water tankers",
+    "Generators": "generators",
+    "Utility crews": "utility crews",
+    "Search-and-rescue teams": "search-and-rescue teams",
+    "Food": "pallets of meals",
+    "Shelter": "cots and shelter kits",
+    "Medical teams": "medical teams",
+    "Hygiene items": "hygiene kits",
+    "Sanitation": "portable toilet and handwashing units",
+}
+
+
+def display_status(entry: DirectSupplies, cursor: int) -> str:
+    """What the screen and CSV show. Until delivery confirmation is decided,
+    every sent shipment reads "In transit"."""
+    return "In transit"
+
+
 def log_rows(events, cursor: int, scenario: Scenario | None = None) -> list[dict]:
-    """The action log as read-only rows, newest first (design doc fields)."""
+    """The action log as read-only rows, newest first, for entries made at or
+    before `cursor` (the log replayed up to the hour on screen, Fix 2)."""
     sc = scenario or default_scenario()
     rows = []
     for ev in reversed(tuple(events)):
+        if ev.hour > cursor:
+            continue
         rows.append(
             {
                 "Simulated time": f"Hour {ev.hour}",
                 "Role": ev.role,
                 "Action": ev.action,
-                "Details": f"{ev.quantity} {ev.resource}, "
+                "Details": f"{ev.quantity} {DETAIL_NOUN[ev.resource]}, "
                 f"{sc.names[ev.from_fips]} to {sc.names[ev.to_fips]}",
                 "Reason": ev.reason,
-                "Status": shipment_status(ev, cursor) if ev.hour <= cursor else "Not yet sent",
+                "Status": display_status(ev, cursor),
             }
         )
     return rows
+
+
+def log_csv(events, cursor: int, scenario: Scenario | None = None) -> str:
+    """The CSV export: the same six columns as the log panel."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=LOG_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(log_rows(events, cursor, scenario))
+    return buf.getvalue()
+
+
+def sender_options(state: dict, resource: str, receiver_fips: str) -> list[tuple]:
+    """Every other county as (fips, name, on_hand of `resource`), in
+    ALPHABETICAL order by name only. Never sorted by stock, distance or gap,
+    and nothing is marked as suggested."""
+    return sorted(
+        (
+            (f, s["county"], s["resources"][resource]["on_hand"])
+            for f, s in state.items()
+            if f != receiver_fips
+        ),
+        key=lambda t: t[1],
+    )
 
 
 def reset_run() -> tuple[Clock, tuple]:

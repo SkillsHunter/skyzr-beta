@@ -51,7 +51,9 @@ name_to_fips = {shapes[f]: f for f in fips_sorted}
 # ---- Session state (one run per browser tab, plan v2 Fix 3) ---------------
 ss = st.session_state
 ss.setdefault("clock", engine.Clock())
-ss.setdefault("events", [])  # the action log; Phase 2 adds entries
+ss.setdefault("events", ())  # the action log: append-only tuple of entries
+ss.setdefault("role", None)
+ss.setdefault("ds_message", "")
 ss.setdefault("selected_fips", None)
 ss.setdefault("speed", "Normal")
 ss.setdefault("overlay", "Overall")
@@ -121,10 +123,30 @@ def on_reset_cancel():
 
 
 def on_reset_confirm():
-    ss.clock = engine.reset()
-    ss.events = []  # clears test-mode actions (none exist until Phase 2)
+    ss.clock, ss.events = engine.reset_run()  # clears every test-mode action
     ss.confirm_reset = False
     ss.slider_note = ""
+    ss.ds_message = ""
+
+
+def on_direct_supplies(to_fips):
+    """Confirm button: log one Direct supplies action through the engine."""
+    try:
+        ss.events = engine.direct_supplies(
+            ss.events, ss.clock, ss.ds_from, to_fips, ss.ds_resource,
+            int(ss.ds_qty), ss.role, ss.ds_reason, sc,
+        )
+    except engine.ActionRefused as err:
+        ss.ds_message = f"Not sent: {err}"
+        return
+    e = ss.events[-1]
+    ss.ds_message = (
+        f"Logged: {e.quantity} {engine.DETAIL_NOUN[e.resource]}, "
+        f"{shapes[e.from_fips]} to {shapes[e.to_fips]}. In transit."
+    )
+    # Clear the form so nothing carries over to the next send.
+    for k in ("ds_resource", "ds_qty", "ds_from", "ds_reason"):
+        ss[k] = None if k != "ds_reason" else ""
 
 
 # ---- Playback: one fragment advances the live head -------------------------
@@ -168,6 +190,18 @@ ui.header(
         ("Reports so far", f"{reports_so_far} of {len(tables['reports.csv'])}"),
     ],
 )
+
+# ---- Role picker (Proposal): a label, not a login ------------------------------
+with st.container(horizontal=True, vertical_alignment="bottom"):
+    st.selectbox(
+        "Your role (a label stamped on every action, not a login)",
+        engine.ROLES,
+        index=None,
+        placeholder="Choose your role",
+        key="role",
+        width=360,
+        help="No password. The role controls nothing; it is recorded with each action.",
+    )
 
 # ---- Playback controls ---------------------------------------------------------
 with st.container(border=True):
@@ -221,9 +255,7 @@ with st.container(border=True):
         st.caption(ss.slider_note)
 
 with st.container(horizontal=True, gap="small"):
-    for i, label in enumerate(
-        ["Role picker", "Action log and CSV export", "Gaps tab", "AI report reading", "Ask SKYZR"]
-    ):
+    for i, label in enumerate(["Gaps tab", "AI report reading", "Ask SKYZR"]):
         st.button(f"{label} · Coming next", key=f"coming_{i}", disabled=True,
                   help="Not built yet. It will be added in a later phase.")
 
@@ -302,6 +334,52 @@ def hours_ago(h):
     return "now" if h == 0 else f"{h} h ago"
 
 
+UNITS = {name: unit for name, unit, _ in engine.RESOURCES}
+
+
+def direct_supplies_form(to_fips, state):
+    """Design doc pp. 7-8. A person chooses everything; SKYZR suggests nothing:
+    no preselected sender, no suggested quantity, senders in alphabetical order."""
+    clock_now = ss.clock
+    if not clock_now.at_live_head:
+        st.info(
+            f"Direct supplies is available only at the live hour ({clock_now.live_head}). "
+            f"You're reviewing hour {clock_now.cursor}. Press Back to live to act."
+        )
+        return
+    if not ss.role:
+        st.info("Choose your role at the top of the page first. It is stamped on every action.")
+        return
+
+    st.selectbox("Resource", engine.RESOURCE_NAMES, index=None,
+                 placeholder="Choose a resource", key="ds_resource")
+    st.number_input("Quantity", min_value=1, step=1, value=None,
+                    placeholder="Type a quantity", key="ds_qty")
+    resource = ss.get("ds_resource")
+    if resource:
+        options = engine.sender_options(state, resource, to_fips)  # alphabetical only
+        labels = {f: f"{name} · {on_hand} {UNITS[resource]} on hand"
+                  for f, name, on_hand in options}
+        st.selectbox("Sending county (alphabetical)", [f for f, _, _ in options], index=None,
+                     format_func=labels.get, placeholder="Choose the sending county",
+                     key="ds_from")
+    else:
+        st.selectbox("Sending county (alphabetical)", [], index=None, disabled=True,
+                     placeholder="Choose a resource first", key="ds_from_placeholder")
+    st.text_area("Reason (required)", key="ds_reason", height=68,
+                 placeholder="Why this move? It is recorded in the action log.")
+
+    ready = bool(resource and ss.get("ds_qty") and ss.get("ds_from")
+                 and (ss.get("ds_reason") or "").strip())
+    st.button("Confirm", type="primary", disabled=not ready,
+              on_click=on_direct_supplies, args=(to_fips,),
+              help=None if ready else "Choose resource, quantity and sender, and type a reason.")
+    st.caption("Stock leaves the sender at once. This county's need and color don't change "
+               "until a report confirms delivery.")
+    if ss.ds_message:
+        (st.error if ss.ds_message.startswith("Not sent") else st.success)(ss.ds_message)
+
+
 with panel_col:
     with st.container(border=True):
         ui.eyebrow("County panel")
@@ -375,10 +453,45 @@ with panel_col:
             ui.section("Contradictions")
             ui.note("AI mode only. Contradictions come from reports the AI reads (Phase 3).")
 
+            # Shipments to this county (status is "In transit" until delivery
+            # confirmation is built).
+            if s["incoming"]:
+                ui.section("Shipments to this county")
+                ui.table(
+                    ["Shipment", "Sent", "Status"],
+                    [[ui.e(f"{sh['quantity']} {engine.DETAIL_NOUN[sh['resource']]} from "
+                           f"{shapes[sh['from']]}"),
+                      f"Hour {sh['dispatched']}", "In transit"] for sh in s["incoming"]],
+                )
+
+            # 6. Direct supplies (hit counties only)
+            if s["hit"]:
+                ui.section("Direct supplies")
+                direct_supplies_form(fips, state)
+
             with st.container(horizontal=True, gap="small"):
-                for i, label in enumerate(["Direct supplies", "Change status", "Log confirmation"]):
+                for i, label in enumerate(["Change status", "Log confirmation"]):
                     st.button(f"{label} · Coming next", key=f"panel_{i}", disabled=True,
-                              help="Not built yet. It will be added in Phase 2.")
+                              help="Not built yet.")
+
+# ---- Action log: read-only, newest first, with the only CSV export ---------------
+with st.container(border=True):
+    ui.eyebrow(f"Action log · up to hour {clock.cursor}")
+    rows = engine.log_rows(ss.events, clock.cursor, sc)
+    if rows:
+        ui.table(list(engine.LOG_COLUMNS),
+                 [[ui.e(str(r[c])) for c in engine.LOG_COLUMNS] for r in rows])
+    else:
+        ui.note("No actions yet. Every action appears here with its role, simulated time "
+                "and reason. No one can edit or delete an entry.")
+    st.download_button(
+        "Export action log (CSV)",
+        data=engine.log_csv(ss.events, clock.live_head, sc),
+        file_name="skyzr_action_log.csv",
+        mime="text/csv",
+        icon=":material/download:",
+        help="The CSV is the only lasting copy of this tab's run.",
+    )
 
 # ---- County list: the accessible route and the fallback for map clicks ----------
 with st.container(border=True):

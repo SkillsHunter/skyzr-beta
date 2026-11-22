@@ -29,6 +29,8 @@ CSS = """
   --sk-subtle: #E9EEF4;
 }
 .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1400px; }
+/* The action log's button is the only CSV export: hide table toolbars. */
+[data-testid="stElementToolbar"] { display: none !important; }
 
 .sk-banner {
   display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px;
