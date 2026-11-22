@@ -452,7 +452,7 @@ with st.container(border=True):
         st.caption(ss.slider_note)
 
 with st.container(horizontal=True, gap="small"):
-    for i, label in enumerate(["Gaps tab", "AI report reading", "Ask SKYZR"]):
+    for i, label in enumerate(["Gaps tab", "Ask SKYZR"]):
         st.button(f"{label} · Coming next", key=f"coming_{i}", disabled=True,
                   help="Not built yet. It will be added in a later phase.")
 
