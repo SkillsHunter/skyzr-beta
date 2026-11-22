@@ -18,8 +18,17 @@ def tables():
     return engine.load_scenario_csvs()
 
 
-def test_engine_does_not_import_streamlit():
-    assert "streamlit" not in sys.modules
+@pytest.mark.parametrize("module", ["engine", "ai"])
+def test_module_does_not_import_streamlit(module):
+    """Checked in a fresh interpreter: other test files (the app form test)
+    import Streamlit into this process, so sys.modules here can't tell."""
+    import subprocess
+    from pathlib import Path
+
+    code = f"import sys, {module}; print('streamlit' in sys.modules)"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         cwd=Path(__file__).parent.parent, check=True)
+    assert out.stdout.strip() == "False"
 
 
 def test_map_has_100_features(geojson):

@@ -140,7 +140,12 @@ def on_direct_supplies(to_fips):
         ss.get(k["from"](resource)) if resource else None, ss.get(k["reason"]), sc,
     )
     if logged:
-        ss[k["resource"]] = None  # outside the form; the form clears itself
+        # Clear only after a successful send. A refused send keeps every field,
+        # so nothing has to be retyped.
+        ss[k["resource"]] = None
+        ss[k["qty"]] = None
+        ss[k["from"](resource)] = None
+        ss[k["reason"]] = ""
 
 
 def ds_keys(to_fips):
@@ -360,12 +365,12 @@ def direct_supplies_form(to_fips, state):
     resource = ss.get(k["resource"])
 
     # Everything else is one form: all fields are sent together on one click.
-    with st.form(f"direct_supplies_{to_fips}", clear_on_submit=True, border=False):
+    with st.form(f"direct_supplies_{to_fips}", clear_on_submit=False, border=False):
         st.number_input("Quantity", min_value=1, step=1, value=None,
                         placeholder="Type a quantity", key=k["qty"])
         if resource:
             options = engine.sender_options(state, resource, to_fips)  # alphabetical only
-            labels = {f: f"{name} · {on_hand} {UNITS[resource]} on hand"
+            labels = {f: f"{name} · {engine.unit_phrase(on_hand, resource)} on hand"
                       for f, name, on_hand in options}
             st.selectbox("Sending county (alphabetical)", [f for f, _, _ in options],
                          index=None, format_func=labels.get,
@@ -462,7 +467,7 @@ with panel_col:
                 ui.section("Shipments to this county")
                 ui.table(
                     ["Shipment", "Sent", "Status"],
-                    [[ui.e(f"{sh['quantity']} {engine.DETAIL_NOUN[sh['resource']]} from "
+                    [[ui.e(f"{engine.quantity_phrase(sh['quantity'], sh['resource'])} from "
                            f"{shapes[sh['from']]}"),
                       f"Hour {sh['dispatched']}", "In transit"] for sh in s["incoming"]],
                 )

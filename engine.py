@@ -511,6 +511,43 @@ DETAIL_NOUN = {
     "Hygiene items": "hygiene kits",
     "Sanitation": "portable toilet and handwashing units",
 }
+# The same for a quantity of exactly 1, e.g. "1 water tanker".
+DETAIL_NOUN_ONE = {
+    "Water": "water tanker",
+    "Generators": "generator",
+    "Utility crews": "utility crew",
+    "Search-and-rescue teams": "search-and-rescue team",
+    "Food": "pallet of meals",
+    "Shelter": "cot or shelter kit",
+    "Medical teams": "medical team",
+    "Hygiene items": "hygiene kit",
+    "Sanitation": "portable toilet and handwashing unit",
+}
+# Units (plural from RESOURCES, singular here) for stock labels: "1 tanker on hand".
+UNIT_ONE = {
+    "Water": "tanker",
+    "Generators": "unit",
+    "Utility crews": "crew",
+    "Search-and-rescue teams": "team",
+    "Food": "pallet of meals",
+    "Shelter": "cot or shelter kit",
+    "Medical teams": "team",
+    "Hygiene items": "kit",
+    "Sanitation": "portable toilet and handwashing unit",
+}
+
+
+def quantity_phrase(quantity: int, resource: str) -> str:
+    """'1 water tanker', '2 water tankers'."""
+    noun = DETAIL_NOUN_ONE[resource] if quantity == 1 else DETAIL_NOUN[resource]
+    return f"{quantity} {noun}"
+
+
+def unit_phrase(quantity: int, resource: str) -> str:
+    """'1 tanker', '0 tankers', '8 tankers'."""
+    unit = UNIT_ONE[resource] if quantity == 1 else dict(
+        (n, u) for n, u, _ in RESOURCES)[resource]
+    return f"{quantity} {unit}"
 
 
 def display_status(entry: DirectSupplies, cursor: int) -> str:
@@ -532,7 +569,7 @@ def log_rows(events, cursor: int, scenario: Scenario | None = None) -> list[dict
                 "Simulated time": f"Hour {ev.hour}",
                 "Role": ev.role,
                 "Action": ev.action,
-                "Details": f"{ev.quantity} {DETAIL_NOUN[ev.resource]}, "
+                "Details": f"{quantity_phrase(ev.quantity, ev.resource)}, "
                 f"{sc.names[ev.from_fips]} to {sc.names[ev.to_fips]}",
                 "Reason": ev.reason,
                 "Status": display_status(ev, cursor),
@@ -618,5 +655,5 @@ def submit_direct_supplies(events, clock: Clock, to_fips: str, role, resource, q
     except ActionRefused as err:
         return events, f"Not sent: {err}", False
     e = new[-1]
-    return new, (f"Logged: {e.quantity} {DETAIL_NOUN[e.resource]}, "
+    return new, (f"Logged: {quantity_phrase(e.quantity, e.resource)}, "
                  f"{sc.names[e.from_fips]} to {sc.names[e.to_fips]}. In transit."), True
