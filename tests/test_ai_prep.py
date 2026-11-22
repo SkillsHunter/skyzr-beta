@@ -162,17 +162,15 @@ def test_client_timeout_changes_nothing(reports, monkeypatch):
     assert result.status == "unavailable" and result.accepted == ()
 
 
-def test_real_client_request_holds_only_the_payload_and_no_key():
-    """Superseded the Phase 3 prep stub test: the real client is built now."""
-    client = ai.ClaudeClient(api_key="test-not-a-key")
-    payload = {"sim_hour": 3, "source": "S", "verified": "no", "text": "T"}
-    req = client.request(payload)
-    assert req["model"] == "claude-haiku-5-5"
-    assert req["max_tokens"] <= 800
-    assert req["tool_choice"] == {"type": "tool", "name": ai.TOOL_NAME}
-    assert [t["name"] for t in req["tools"]] == [ai.TOOL_NAME]
-    assert req["messages"] == [{"role": "user", "content": ai.user_message(payload)}]
-    assert "test-not-a-key" not in repr(req)
+def test_real_client_config_and_no_key_in_it():
+    """Superseded the Phase 3 prep stub test: the real client (Gemini) is built now."""
+    client = ai.GeminiClient(api_key="test-not-a-key", model=ai.GEMINI_MODEL, sdk_client=object())
+    cfg = client.config(30)
+    assert cfg["max_output_tokens"] <= 800 and cfg["temperature"] == 0
+    assert cfg["response_mime_type"] == "application/json"
+    assert cfg["response_json_schema"] == ai.FACT_SCHEMA
+    assert cfg["system_instruction"] == ai.SYSTEM_PROMPT
+    assert "test-not-a-key" not in repr(cfg)
 
 
 # ---- Cache and call cap ----------------------------------------------------------------

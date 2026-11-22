@@ -195,8 +195,9 @@ def test_model_receives_only_sim_hour_source_verified_text():
     assert client.payloads
     for p in client.payloads:
         assert set(p) == {"sim_hour", "source", "verified", "text"}
-    req = ai.ClaudeClient(api_key="test-not-a-key").request(client.payloads[0])
-    assert req["messages"][0]["content"] == ai.user_message(client.payloads[0])
+    sdk = RecordingSDK([{"facts": []}])
+    ai.GeminiClient(api_key="k", model="m", sdk_client=sdk).extract(client.payloads[0])
+    assert sdk.calls[0]["contents"] == ai.user_message(client.payloads[0])
 
 
 def test_accepted_facts_csv_has_report_id_and_nine_fields():
@@ -275,3 +276,110 @@ def test_water_count_of_zero_never_makes_water_red_or_yellow():
 def test_model_is_told_a_zero_count_is_normal():
     assert "All three water systems are back in service\" = Systems out of service, 0, Normal" \
         in ai.SYSTEM_PROMPT
+
+
+# ---- Phase 3B: the Gemini client (fake SDK; no key, no network) --------------------------
+
+import json as _json
+
+import streamlit as _st
+from google.genai import errors as genai_errors
+
+
+class _Resp:
+    def __init__(self, text):
+        self.text = text
+
+
+class RecordingSDK:
+    """Stands in for google.genai.Client: returns or raises the scripted outcomes."""
+
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = []
+        self.models = self
+
+    def generate_content(self, *, model, contents, config):
+        self.calls.append({"model": model, "contents": contents, "config": config})
+        out = self.outcomes.pop(0) if self.outcomes else {"facts": []}
+        if isinstance(out, Exception):
+            raise out
+        return _Resp(out if isinstance(out, str) else _json.dumps(out))
+
+
+def rate_limited():
+    return genai_errors.ClientError(
+        429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "quota"}})
+
+
+def test_gemini_key_is_read_only_from_st_secrets(monkeypatch):
+    monkeypatch.setattr(_st, "secrets", {"GEMINI_API_KEY": "secret-from-st-secrets"})
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    seen = {}
+
+    class FakeGenaiClient:
+        def __init__(self, api_key=None, **kw):
+            seen["api_key"] = api_key
+
+    import google.genai as genai
+    monkeypatch.setattr(genai, "Client", FakeGenaiClient)
+    client = ai.GeminiClient()
+    assert seen["api_key"] == "secret-from-st-secrets"
+    assert client.model == ai.GEMINI_MODEL  # no GEMINI_MODEL entry: the default
+    assert "secret-from-st-secrets" not in repr(vars(client))
+
+
+def test_gemini_model_can_be_overridden_in_secrets(monkeypatch):
+    monkeypatch.setattr(_st, "secrets", {"GEMINI_API_KEY": "k", "GEMINI_MODEL": "gemini-x"})
+    client = ai.GeminiClient(sdk_client=RecordingSDK([]))
+    assert client.model == "gemini-x" and client.cache_name == "gemini:gemini-x"
+
+
+def test_gemini_429_retried_at_most_twice_then_unavailable_and_not_cached():
+    sdk = RecordingSDK([rate_limited(), rate_limited(), rate_limited(), {"facts": []}])
+    waits = []
+    client = ai.GeminiClient(api_key="k", model="m", sdk_client=sdk, sleep=waits.append)
+    intake = ai.Intake(client)
+    res = intake.read(ALL[0])
+    assert res.status == "unavailable" and res.message == ai.AI_UNAVAILABLE
+    assert len(sdk.calls) == 3 and len(waits) == 2  # one try plus two retries
+    assert len(intake.cache) == 0  # a failed call is never cached
+
+
+def test_gemini_429_then_success_is_read():
+    sdk = RecordingSDK([rate_limited(), {"facts": []}])
+    client = ai.GeminiClient(api_key="k", model="m", sdk_client=sdk, sleep=lambda s: None)
+    assert ai.Intake(client).read(ALL[0]).status == "ok"
+    assert len(sdk.calls) == 2
+
+
+@pytest.mark.parametrize("bad", [
+    "not json",
+    {"items": []},
+    {"facts": [{"county": "Robeson"}]},
+    {"facts": [{"county": "Robeson", "lifeline_or_resource": "Power", "metric": "Route status",
+                "value": "Open", "status_word": "Open", "quote": "x"}]},
+    {"facts": [{"county": "Robeson", "lifeline_or_resource": "Roads", "metric": "Route status",
+                "value": "Open", "status_word": "Open", "quote": "x", "extra": 1}]},
+])
+def test_gemini_response_that_does_not_fit_schema_is_unavailable(bad):
+    sdk = RecordingSDK([bad])
+    intake = ai.Intake(ai.GeminiClient(api_key="k", model="m", sdk_client=sdk))
+    res = intake.read(ALL[0])
+    assert res.status == "unavailable" and res.accepted == ()
+    assert len(intake.cache) == 0
+
+
+def test_gemini_good_response_goes_through_the_quote_check():
+    r = SC.reports["R13"]
+    sdk = RecordingSDK([{"facts": [
+        {"county": "Robeson", "lifeline_or_resource": "Water", "metric": "Systems out of service",
+         "value": 3, "status_word": "Out", "quote": "three municipal water systems are offline"},
+        {"county": "Robeson", "lifeline_or_resource": "Health and Medical",
+         "metric": "Hospital status", "value": "Hospital closed or evacuating",
+         "status_word": "Closed", "quote": "the hospital closed"}]}])
+    res = ai.Intake(ai.GeminiClient(api_key="k", model="m", sdk_client=sdk)).read(r)
+    assert res.status == "ok" and len(res.accepted) == 1 and len(res.rejected) == 1
+    cfg = sdk.calls[0]["config"]
+    assert cfg["temperature"] == 0 and cfg["response_json_schema"] == ai.FACT_SCHEMA

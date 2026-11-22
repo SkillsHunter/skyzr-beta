@@ -75,12 +75,12 @@ FAKE_AI = os.environ.get("SKYZR_FAKE_AI", "")  # localhost test double only; nev
 
 def make_client():
     """The real Claude client, or a client that always fails if there is no key.
-    The key is read only inside ai.ClaudeClient, from st.secrets."""
+    The key is read only inside ai.GeminiClient, from st.secrets."""
     if FAKE_AI:
         import fake_ai  # test double: scripted answers from the public report texts
         return fake_ai.client(fail=FAKE_AI == "fail" or ss.ai_fail_test)
     try:
-        return ai.ClaudeClient()
+        return ai.GeminiClient()
     except Exception:  # noqa: BLE001 - no key or no SDK: every report shows "AI unavailable"
         return ai.UnavailableClient("No API key")
 
@@ -346,7 +346,8 @@ with st.container(border=True):
         st.caption(f"AI mode is on. Reports read so far: {n_ok}"
                    + (f" · not processed: {n_bad}" if n_bad else "")
                    + f" · AI calls this tab: {ss.intake.calls_made} of {ai.MAX_CALLS_PER_SESSION}"
-                   + f" · model {ai.MODEL_ID}" + (" (TEST DOUBLE)" if FAKE_AI else ""))
+                   + f" · model {getattr(ss.intake.client, 'model', ai.MODEL_ID)}"
+                   + (" (TEST DOUBLE)" if FAKE_AI else ""))
         if FAKE_AI:
             st.checkbox("Test only: make the AI fail", key="ai_fail_test",
                         on_change=on_ai_fail_test)
@@ -354,17 +355,31 @@ with st.container(border=True):
             if st.button("Prepare AI reading", icon=":material/auto_awesome:",
                          help="Reads all 50 reports once, before playback, to fill the "
                               "server cache. Facts still take effect only at each report's hour."):
-                bar = st.progress(0.0, text="Reading reports…")
                 all_reports = sorted(sc.reports.values(), key=lambda r: r["sim_hour"])
+                pace = getattr(ss.intake.client, "prepare_seconds_per_call", 0)
+                todo = sum(1 for r in all_reports if not ss.intake.cached(r))
+                st.info(f"{todo} report(s) to read; {len(all_reports) - todo} already cached are "
+                        "skipped. " + (f"Calls are paced one every {pace:g} s to stay under the "
+                                       "free tier's per-minute limit: about "
+                                       f"{max(1, round(todo * pace / 60))} minute(s). Keep this tab open."
+                                       if pace and todo else ""))
+                bar = st.progress(0.0, text="Reading reports…")
                 results = []
+                last_call = 0.0
                 for i, r in enumerate(all_reports, 1):
+                    if pace and not ss.intake.cached(r):
+                        wait = pace - (time.monotonic() - last_call)
+                        if last_call and wait > 0:
+                            time.sleep(wait)
+                        last_call = time.monotonic()
                     results.append(ss.intake.read(r))
                     bar.progress(i / len(all_reports), text=f"Read {i} of {len(all_reports)}")
                 ok = sum(1 for x in results if x.status == "ok")
                 (st.success if ok == len(results) else st.warning)(
                     f"Prepared: {ok} of {len(results)} reports read and cached. "
                     + ("" if ok == len(results) else
-                       f"{len(results) - ok} were not processed and will be tried again at their hour. ")
+                       f"{len(results) - ok} were not processed: they are tried again at their "
+                       "hour, or press Prepare again to retry only those. ")
                     + "Facts take effect only when the clock reaches each report's hour.")
                 # Failed reads aren't kept, so each is tried again at its hour.
         st.download_button(

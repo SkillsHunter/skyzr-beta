@@ -328,9 +328,15 @@ def find_contradictions(facts) -> list[tuple]:
 
 # ---- The real client (Phase 3) -------------------------------------------------------
 
-MODEL_ID = "claude-haiku-5-5"
+# Phase 3B: Google Gemini (Gemini API, Google AI Studio free tier).
+# The SDK's own Gemini API examples (google-genai 3.6.1) use this model id.
+# An optional GEMINI_MODEL entry in Streamlit Secrets overrides it.
+GEMINI_MODEL = "gemini-3.8-flash"
+MODEL_ID = GEMINI_MODEL  # what the app shows; GeminiClient.model is what it calls
 MAX_OUTPUT_TOKENS = 800
-TOOL_NAME = "record_facts"
+RATE_LIMIT_RETRIES = 2  # HTTP 429: wait and retry at most twice, within the 30 s budget
+RATE_LIMIT_WAIT_SECONDS = 4.0  # first wait; doubled for the second
+PREPARE_SECONDS_PER_CALL = 7.0  # Prepare pacing: about 8 calls a minute, under free-tier limits
 
 LIFELINE_VOCAB = ("Roads", "Water", "Health and Medical")
 METRIC_VOCAB = ("Route status", "Systems out of service", "System status",
@@ -338,7 +344,7 @@ METRIC_VOCAB = ("Route status", "Systems out of service", "System status",
 STATUS_VOCAB = ("Open", "Partly closed", "No route", "Out", "Normal", "Boil notice",
                 "On generator", "Evacuating", "Closed", "Requested")
 
-SYSTEM_PROMPT = """You read one field report from a fictional hurricane exercise in North Carolina and record facts with the record_facts tool.
+SYSTEM_PROMPT = """You read one field report from a fictional hurricane exercise in North Carolina and return its facts as JSON: {"facts": [...]}.
 
 Extract only these kinds of fact:
 - Roads: metric "Route status"; status_word Open, Partly closed or No route; value "Open", "Some primary routes closed" or "No open route to county seat".
@@ -385,54 +391,103 @@ def user_message(payload: dict) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-def tool_definition() -> dict:
-    return {
-        "name": TOOL_NAME,
-        "description": "Record the facts found in the report (an empty list if none).",
-        "input_schema": FACT_SCHEMA,
-        "strict": True,
-    }
+def check_response_shape(data) -> list:
+    """The parsed JSON must fit FACT_SCHEMA exactly (same fields, same enums).
+    Anything else raises, so the report shows "AI unavailable" (never a guess)."""
+    if not isinstance(data, dict) or set(data) != {"facts"} or not isinstance(data["facts"], list):
+        raise ValueError("response is not {facts: [...]}")
+    props = FACT_SCHEMA["properties"]["facts"]["items"]["properties"]
+    fields = set(props)
+    for f in data["facts"]:
+        if not isinstance(f, dict) or set(f) != fields:
+            raise ValueError("a fact has missing or extra fields")
+        for name, spec in props.items():
+            v = f[name]
+            if "enum" in spec and v not in spec["enum"]:
+                raise ValueError(f"{name} is outside the fixed vocabulary")
+            if name == "value":
+                if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+                    raise ValueError("value is not a string or number")
+            elif not isinstance(v, str):
+                raise ValueError(f"{name} is not a string")
+    return data["facts"]
 
 
-class ClaudeClient:
-    """The real client. The API key comes only from st.secrets and is never
-    logged. extract() receives payload_for(report) and nothing else."""
+def _is_rate_limit(err) -> bool:
+    return getattr(err, "code", None) == 429
 
-    cache_name = MODEL_ID
 
-    def __init__(self, api_key: str | None = None):
-        if api_key is None:
+class GeminiClient:
+    """The real client (Phase 3B: Google Gemini). The API key comes only from
+    st.secrets["GEMINI_API_KEY"], read here, and is never printed or logged.
+    extract() receives payload_for(report) and nothing else."""
+
+    prepare_seconds_per_call = PREPARE_SECONDS_PER_CALL
+
+    def __init__(self, api_key: str | None = None, model: str | None = None,
+                 sdk_client=None, sleep=None):
+        if api_key is None or model is None:
             import streamlit as st  # only here: ai.py stays importable without Streamlit
-            api_key = st.secrets["ANTHROPIC_API_KEY"]
-        import anthropic
-        self._client = anthropic.Anthropic(
-            api_key=api_key, timeout=CALL_TIMEOUT_SECONDS, max_retries=1)
+            if api_key is None:
+                api_key = st.secrets["GEMINI_API_KEY"]
+            if model is None:
+                try:
+                    model = st.secrets.get("GEMINI_MODEL") or GEMINI_MODEL
+                except Exception:  # noqa: BLE001 - no secrets file: use the default model
+                    model = GEMINI_MODEL
+        self.model = model
+        self.cache_name = f"gemini:{model}"
+        if sdk_client is None:
+            from google import genai
+            from google.genai import types
+            sdk_client = genai.Client(
+                api_key=api_key,
+                # The SDK's own retries are off: 429s are retried below, inside the budget.
+                http_options=types.HttpOptions(
+                    timeout=int(CALL_TIMEOUT_SECONDS * 1000),
+                    retry_options=types.HttpRetryOptions(attempts=1)),
+            )
+        self._client = sdk_client
+        self._sleep = sleep or __import__("time").sleep
 
-    def request(self, payload: dict) -> dict:
-        """The exact request sent (no key in it), so tests can check it."""
+    def config(self, timeout_s: float) -> dict:
+        """The generation settings (no key in them), so tests can check them."""
         return {
-            "model": MODEL_ID,
-            "max_tokens": MAX_OUTPUT_TOKENS,
-            "system": SYSTEM_PROMPT,
-            # Haiku 5.5 thinks by default; thinking off is allowed at its default
-            # effort, and a forced tool call needs it off.
-            "thinking": {"type": "disabled"},
-            "tools": [tool_definition()],
-            "tool_choice": {"type": "tool", "name": TOOL_NAME},
-            "messages": [{"role": "user", "content": user_message(payload)}],
+            "system_instruction": SYSTEM_PROMPT,
+            "temperature": 0,
+            "max_output_tokens": MAX_OUTPUT_TOKENS,
+            "response_mime_type": "application/json",
+            "response_json_schema": FACT_SCHEMA,
+            "thinking_config": {"thinking_level": "MINIMAL"},  # keep the call fast
+            "http_options": {"timeout": max(1000, int(timeout_s * 1000))},
         }
 
     def extract(self, payload: dict):
-        response = self._client.messages.create(**self.request(payload))
-        if response.stop_reason not in ("tool_use", "end_turn"):
-            raise RuntimeError(f"stopped: {response.stop_reason}")  # max_tokens, refusal: not processed
-        for block in response.content:
-            if block.type == "tool_use" and block.name == TOOL_NAME:
-                facts = block.input.get("facts")
-                if not isinstance(facts, list):
-                    raise ValueError("no facts list")
-                return facts
-        raise ValueError("no tool call in the response")
+        import time
+
+        deadline = time.monotonic() + CALL_TIMEOUT_SECONDS
+        for attempt in range(RATE_LIMIT_RETRIES + 1):
+            remaining = deadline - time.monotonic()
+            if remaining <= 1:
+                raise TimeoutError("30 s budget used up")
+            try:
+                response = self._client.models.generate_content(
+                    model=self.model,
+                    contents=user_message(payload),
+                    config=self.config(remaining),
+                )
+                break
+            except Exception as err:  # noqa: BLE001
+                if not _is_rate_limit(err) or attempt == RATE_LIMIT_RETRIES:
+                    raise
+                wait = RATE_LIMIT_WAIT_SECONDS * (2 ** attempt)
+                if time.monotonic() + wait >= deadline - 1:
+                    raise
+                self._sleep(wait)
+        text = getattr(response, "text", None)
+        if not text:
+            raise ValueError("empty response")
+        return check_response_shape(json.loads(text))
 
 
 class UnavailableClient:
