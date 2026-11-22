@@ -284,6 +284,10 @@ def state_at(cursor: int, events=(), scenario: Scenario | None = None) -> dict:
                     for r, _, _ in RESOURCES
                 },
                 "incoming": [],
+                "silent": False,
+                "manual": {},
+                "manual_marker": False,
+                "contradictions": [],
             }
             continue
 
@@ -312,12 +316,25 @@ def state_at(cursor: int, events=(), scenario: Scenario | None = None) -> dict:
                 for r, _, _ in RESOURCES
             },
             "incoming": [],
+            "silent": silent,
+            "manual": {},
+            "manual_marker": False,
+            "contradictions": [],
         }
 
-    # Replay the action log. Dispatch moves stock only: need and color above
-    # come from the answer key and are never touched by a shipment.
-    apply_events(out, cursor, events)
+    # Replay the action log up to the cursor: shipments, confirmations and
+    # manual status changes. A confirmation moves stock and lowers need; it
+    # never changes a lifeline or county color.
+    apply_events(out, cursor, events, sc)
     return out
+
+
+def silent_at(sc: Scenario, fips: str, hour: int) -> bool:
+    """True if a hit county has had no contact for SILENCE_HOURS or more."""
+    if fips not in sc.hit:
+        return False
+    last = _last_at_or_before(sc.contacts[fips], hour)
+    return last is None or hour - last >= SILENCE_HOURS
 
 
 def overlay_color(county_state: dict, overlay: str) -> str:
@@ -470,30 +487,205 @@ def direct_supplies(
     return events + (entry,)
 
 
-def shipment_status(entry: DirectSupplies, cursor: int) -> str:
-    """Delivery confirmation waits for the team (Sunday 9:00), so a shipment
-    past its transit time is 'Arrived, not confirmed', still counted in transit."""
-    return "In transit" if cursor < entry.arrives else "Arrived, not confirmed"
+@dataclass(frozen=True)
+class ConfirmDelivery:
+    """A delivery confirmed by hand (Log confirmation). Frozen like every entry."""
+
+    seq: int
+    hour: int
+    role: str
+    shipment_seq: int  # the DirectSupplies entry it confirms
+    reason: str
+
+    action = "Confirmed delivery"
 
 
-def apply_events(out: dict, cursor: int, events) -> None:
-    """Replay the log up to `cursor` onto state_at's output (in place)."""
-    for ev in events:
-        if not isinstance(ev, DirectSupplies) or ev.hour > cursor:
+@dataclass(frozen=True)
+class ChangeStatus:
+    """A manual status (Change status). Holds until the next report on it."""
+
+    seq: int
+    hour: int
+    role: str
+    fips: str
+    target: str  # "Overall" or one lifeline
+    color: str  # red, yellow or green
+    reason: str
+
+    action = "Changed status"
+
+
+STATUS_TARGETS = ("Overall",) + LIFELINES
+MANUAL_COLORS = (RED, YELLOW, GREEN)
+
+
+def is_action(entry, kind) -> bool:
+    """Match a log entry to its kind by its action name, not its class object,
+    so entries made before a code reload (a session keeps its log) still count."""
+    return getattr(entry, "action", None) == kind.action
+
+
+def shipment_outcome(ev: DirectSupplies, cursor: int, events, sc: Scenario):
+    """(status, delivered_hour or None, by_hand) for one shipment at `cursor`.
+
+    Answer-key mode: at the arrival hour a fictional confirmation arrives and
+    is accepted, unless the receiver is silent then. A silent receiver's
+    shipment is "Unconfirmed" until someone logs a confirmation by hand."""
+    if cursor < ev.arrives:
+        return "In transit", None, False
+    if not silent_at(sc, ev.to_fips, ev.arrives):
+        return f"Delivered (hour {ev.arrives})", ev.arrives, False
+    hand = next((c for c in events if is_action(c, ConfirmDelivery)
+                 and c.shipment_seq == ev.seq and c.hour <= cursor), None)
+    if hand:
+        return f"Delivered (hour {hand.hour}, by hand)", hand.hour, True
+    return "Unconfirmed", None, False
+
+
+def _ak_value(sc: Scenario, fips: str, target: str, hour: int) -> str:
+    lifelines = sc.lifelines[(fips, hour)]
+    return most_urgent(lifelines.values()) if target == "Overall" else lifelines[target]
+
+
+def next_report_on(sc: Scenario, fips: str, target: str, after: int, cursor: int):
+    """The next "report" on a lifeline (or Overall) after hour `after`, up to
+    `cursor`: reports.csv names no lifeline, so it is the next hour the answer
+    key's value changes, counting only hours the county is in contact.
+    Returns (hour, value) or None."""
+    prev = _ak_value(sc, fips, target, after)
+    for h in range(after + 1, cursor + 1):
+        if silent_at(sc, fips, h):
             continue
-        out[ev.from_fips]["resources"][ev.resource]["on_hand"] -= ev.quantity
-        out[ev.to_fips]["resources"][ev.resource]["in_transit"] += ev.quantity
-        out[ev.to_fips]["incoming"].append(
-            {
-                "seq": ev.seq,
-                "from": ev.from_fips,
-                "resource": ev.resource,
-                "quantity": ev.quantity,
-                "dispatched": ev.hour,
-                "arrives": ev.arrives,
-                "status": shipment_status(ev, cursor),
-            }
+        v = _ak_value(sc, fips, target, h)
+        if v != prev:
+            return h, v
+    return None
+
+
+def manual_outcome(cs: ChangeStatus, cursor: int, sc: Scenario):
+    """("holding" | "cleared" | "contradiction", (hour, value) or None)."""
+    nxt = next_report_on(sc, cs.fips, cs.target, cs.hour, cursor)
+    if nxt is None:
+        return "holding", None
+    return ("cleared" if nxt[1] == cs.color else "contradiction"), nxt
+
+
+def apply_events(out: dict, cursor: int, events, sc: Scenario) -> None:
+    """Replay the log up to `cursor` onto state_at's output (in place)."""
+    events = tuple(events)
+    delivered = {}  # (fips, resource) -> quantity confirmed up to cursor
+    latest_manual = {}  # (fips, target) -> latest ChangeStatus
+    for ev in events:
+        if ev.hour > cursor:
+            continue
+        if is_action(ev, DirectSupplies):
+            out[ev.from_fips]["resources"][ev.resource]["on_hand"] -= ev.quantity
+            status, when, by_hand = shipment_outcome(ev, cursor, events, sc)
+            to = out[ev.to_fips]
+            if when is None:
+                to["resources"][ev.resource]["in_transit"] += ev.quantity
+            else:
+                to["resources"][ev.resource]["on_hand"] += ev.quantity
+                key = (ev.to_fips, ev.resource)
+                delivered[key] = delivered.get(key, 0) + ev.quantity
+            to["incoming"].append({
+                "seq": ev.seq, "from": ev.from_fips, "resource": ev.resource,
+                "quantity": ev.quantity, "dispatched": ev.hour, "arrives": ev.arrives,
+                "status": status, "delivered_hour": when, "by_hand": by_hand,
+            })
+        elif is_action(ev, ChangeStatus):
+            latest_manual[(ev.fips, ev.target)] = ev
+
+    # A confirmed delivery lowers known need (never below 0). Colors untouched.
+    for (fips, resource), qty in delivered.items():
+        r = out[fips]["resources"][resource]
+        if r["need"] is not None:
+            r["need"] = max(0, r["need"] - qty)
+
+    # Manual statuses hold until the next report on that lifeline.
+    for (fips, target), cs in latest_manual.items():
+        s = out[fips]
+        outcome, report = manual_outcome(cs, cursor, sc)
+        s["manual"][target] = {
+            "color": cs.color, "hour": cs.hour, "role": cs.role, "reason": cs.reason,
+            "outcome": outcome, "report": report,
+        }
+        if outcome == "contradiction":
+            s["contradictions"].append({
+                "target": target,
+                "manual": {"color": cs.color, "hour": cs.hour,
+                           "source": f"Manual change ({cs.role})"},
+                "report": {"color": report[1], "hour": report[0],
+                           "source": "Answer key (scenario report)"},
+            })
+
+    for s in out.values():
+        if not s["hit"] or s["silent"] or not s["manual"]:
+            continue  # purple overrides everything while silent
+        active = {t: m for t, m in s["manual"].items() if m["outcome"] != "cleared"}
+        if not active:
+            continue
+        s["manual_marker"] = True
+        for t, m in active.items():  # overwrite nothing: the manual value stays shown
+            if t != "Overall":
+                s["lifelines"][t] = m["color"]
+        if "Overall" in active:
+            s["color"] = active["Overall"]["color"]
+        else:
+            s["color"] = most_urgent(s["lifelines"].values())
+        s["status_word"] = STATUS_WORD[s["color"]]
+
+
+def _require(clock: Clock, role, reason) -> None:
+    if not clock.at_live_head:
+        raise ActionRefused(
+            f"Actions are allowed only at the live hour ({clock.live_head}); "
+            f"the view is at hour {clock.cursor}."
         )
+    if not isinstance(role, str) or not role.strip():
+        raise ActionRefused("A role is required.")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ActionRefused("A reason is required.")
+
+
+def confirm_delivery(events, clock: Clock, shipment_seq: int, role: str, reason: str,
+                     scenario: Scenario | None = None) -> tuple:
+    """Log a delivery confirmation by hand for an Unconfirmed shipment."""
+    sc = scenario or default_scenario()
+    events = tuple(events)
+    _require(clock, role, reason)
+    ship = next((e for e in events if is_action(e, DirectSupplies)
+                 and e.seq == shipment_seq), None)
+    if ship is None or ship.hour > clock.live_head:
+        raise ActionRefused("That shipment isn't in the log.")
+    status, _, _ = shipment_outcome(ship, clock.live_head, events, sc)
+    if status != "Unconfirmed":
+        raise ActionRefused(f"That shipment is {status.lower()}; only an Unconfirmed "
+                            "shipment can be confirmed by hand.")
+    return events + (ConfirmDelivery(len(events) + 1, clock.live_head, role.strip(),
+                                     shipment_seq, reason.strip()),)
+
+
+def change_status(events, clock: Clock, fips: str, target: str, color: str, role: str,
+                  reason: str, scenario: Scenario | None = None) -> tuple:
+    """Set Overall or one lifeline by hand. Refused on a silent county."""
+    sc = scenario or default_scenario()
+    events = tuple(events)
+    _require(clock, role, reason)
+    if fips not in sc.names:
+        raise ActionRefused("Unknown county.")
+    if fips not in sc.hit:
+        raise ActionRefused(f"{sc.names[fips]} is not in the storm path; "
+                            "it has no status to change.")
+    if silent_at(sc, fips, clock.live_head):
+        raise ActionRefused(f"{sc.names[fips]} is silent; its status can't be set "
+                            "until contact returns.")
+    if target not in STATUS_TARGETS:
+        raise ActionRefused(f"Unknown lifeline: {target!r}.")
+    if color not in MANUAL_COLORS:
+        raise ActionRefused("The new color must be red, yellow or green.")
+    return events + (ChangeStatus(len(events) + 1, clock.live_head, role.strip(), fips,
+                                  target, color, reason.strip()),)
 
 
 ROLES = ("Situation analyst", "Logistics", "Operations chief", "Other")  # Proposal
@@ -550,31 +742,49 @@ def unit_phrase(quantity: int, resource: str) -> str:
     return f"{quantity} {unit}"
 
 
-def display_status(entry: DirectSupplies, cursor: int) -> str:
-    """What the screen and CSV show. Until delivery confirmation is decided,
-    every sent shipment reads "In transit"."""
-    return "In transit"
+def shipment_phrase(ev: DirectSupplies, sc: Scenario) -> str:
+    """'4 water tankers, Wake to Robeson'."""
+    return (f"{quantity_phrase(ev.quantity, ev.resource)}, "
+            f"{sc.names[ev.from_fips]} to {sc.names[ev.to_fips]}")
+
+
+def _manual_status_text(cs: ChangeStatus, cursor: int, sc: Scenario) -> str:
+    outcome, report = manual_outcome(cs, cursor, sc)
+    if outcome == "holding":
+        return "Manual"
+    if outcome == "cleared":
+        return f"Cleared (hour {report[0]}): next report agreed"
+    return f"Contradiction (hour {report[0]})"
 
 
 def log_rows(events, cursor: int, scenario: Scenario | None = None) -> list[dict]:
     """The action log as read-only rows, newest first, for entries made at or
     before `cursor` (the log replayed up to the hour on screen, Fix 2)."""
     sc = scenario or default_scenario()
+    events = tuple(events)
+    by_seq = {e.seq: e for e in events}
     rows = []
-    for ev in reversed(tuple(events)):
+    for ev in reversed(events):
         if ev.hour > cursor:
             continue
-        rows.append(
-            {
-                "Simulated time": f"Hour {ev.hour}",
-                "Role": ev.role,
-                "Action": ev.action,
-                "Details": f"{quantity_phrase(ev.quantity, ev.resource)}, "
-                f"{sc.names[ev.from_fips]} to {sc.names[ev.to_fips]}",
-                "Reason": ev.reason,
-                "Status": display_status(ev, cursor),
-            }
-        )
+        if is_action(ev, DirectSupplies):
+            details = shipment_phrase(ev, sc)
+            status = shipment_outcome(ev, cursor, events, sc)[0]
+        elif is_action(ev, ConfirmDelivery):
+            ship = by_seq[ev.shipment_seq]
+            details = f"{shipment_phrase(ship, sc)} (sent hour {ship.hour})"
+            status = "Delivered"
+        else:  # ChangeStatus
+            details = f"{sc.names[ev.fips]} {ev.target}: set to {ev.color.capitalize()}"
+            status = _manual_status_text(ev, cursor, sc)
+        rows.append({
+            "Simulated time": f"Hour {ev.hour}",
+            "Role": ev.role,
+            "Action": ev.action,
+            "Details": details,
+            "Reason": ev.reason,
+            "Status": status,
+        })
     return rows
 
 
@@ -604,6 +814,22 @@ def sender_options(state: dict, resource: str, receiver_fips: str) -> list[tuple
     )
 
 
+def sender_label(state: dict, fips: str, resource: str) -> str:
+    """'Wake · 8 water tankers on hand'. A silent county stays listed, marked
+    with the hour its information dates from."""
+    s = state[fips]
+    label = (f"{s['county']} · {quantity_phrase(s['resources'][resource]['on_hand'], resource)}"
+             " on hand")
+    if s.get("silent"):
+        label += f" (last known, hour {s['lifelines_as_of']})"
+    return label
+
+
+def eligible_for_hand_confirmation(state: dict, fips: str) -> list[dict]:
+    """Shipments to this county waiting for a hand confirmation."""
+    return [sh for sh in state[fips]["incoming"] if sh["status"] == "Unconfirmed"]
+
+
 def reset_run() -> tuple[Clock, tuple]:
     """Reset: hour 0 and an empty log. Clears every test-mode action."""
     return Clock(), ()
@@ -617,7 +843,55 @@ MISSING_MESSAGES = {
     "quantity": "Type a quantity first.",
     "sender": "Choose the sending county first.",
     "reason": "Type a reason first: every action needs one.",
+    "shipment": "Choose the shipment first.",
+    "target": "Choose Overall or a lifeline first.",
+    "color": "Choose the new color first.",
 }
+
+
+def _missing(**fields) -> list[str]:
+    out = []
+    for name, value in fields.items():
+        if value is None or (isinstance(value, str) and not value.strip()):
+            out.append(name)
+    return out
+
+
+def _refused(prefix: str, missing: list[str]) -> str:
+    return prefix + " " + " ".join(MISSING_MESSAGES[m] for m in missing)
+
+
+def submit_confirm_delivery(events, clock: Clock, shipment_seq, role, reason,
+                            scenario: Scenario | None = None):
+    """One click on the Log confirmation form. Returns (events, message, logged)."""
+    sc = scenario or default_scenario()
+    events = tuple(events)
+    missing = _missing(role=role, shipment=shipment_seq, reason=reason)
+    if missing:
+        return events, _refused("Not logged.", missing), False
+    try:
+        new = confirm_delivery(events, clock, int(shipment_seq), role, reason, sc)
+    except ActionRefused as err:
+        return events, f"Not logged: {err}", False
+    ship = next(e for e in new if e.seq == new[-1].shipment_seq)
+    return new, f"Logged: delivery confirmed, {shipment_phrase(ship, sc)}.", True
+
+
+def submit_change_status(events, clock: Clock, fips: str, target, color, role, reason,
+                         scenario: Scenario | None = None):
+    """One click on the Change status form. Returns (events, message, logged)."""
+    sc = scenario or default_scenario()
+    events = tuple(events)
+    missing = _missing(role=role, target=target, color=color, reason=reason)
+    if missing:
+        return events, _refused("Not changed.", missing), False
+    try:
+        new = change_status(events, clock, fips, target, color, role, reason, sc)
+    except ActionRefused as err:
+        return events, f"Not changed: {err}", False
+    e = new[-1]
+    return new, (f"Logged: {sc.names[fips]} {e.target} set to {e.color.capitalize()} "
+                 "(Manual until the next report on it)."), True
 
 
 def missing_fields(role, resource, quantity, from_fips, reason) -> list[str]:

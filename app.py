@@ -148,6 +148,37 @@ def on_direct_supplies(to_fips):
         ss[k["reason"]] = ""
 
 
+def set_form_msg(form, text):
+    """Remember a form's result, tied to the live hour it happened at."""
+    ss.setdefault("form_msgs", {})[form] = (text, ss.clock.live_head)
+
+
+def show_form_msg(form):
+    m = ss.get("form_msgs", {}).get(form)
+    if m and m[1] == ss.clock.live_head:
+        (st.error if m[0].startswith("Not") else st.success)(m[0])
+
+
+def on_confirm_delivery(fips):
+    """Log confirmation (one form, one click). Fields are kept if refused."""
+    ship_k, reason_k = f"lc_ship_{fips}", f"lc_reason_{fips}"
+    ss.events, msg, ok = engine.submit_confirm_delivery(
+        ss.events, ss.clock, ss.get(ship_k), ss.get("role"), ss.get(reason_k), sc)
+    set_form_msg(f"lc_{fips}", msg)
+    if ok:
+        ss[ship_k], ss[reason_k] = None, ""
+
+
+def on_change_status(fips):
+    """Change status (one form, one click). Fields are kept if refused."""
+    t_k, c_k, r_k = f"cs_target_{fips}", f"cs_color_{fips}", f"cs_reason_{fips}"
+    ss.events, msg, ok = engine.submit_change_status(
+        ss.events, ss.clock, fips, ss.get(t_k), ss.get(c_k), ss.get("role"), ss.get(r_k), sc)
+    set_form_msg(f"cs_{fips}", msg)
+    if ok:
+        ss[t_k], ss[c_k], ss[r_k] = None, None, ""
+
+
 def ds_keys(to_fips):
     """Widget keys for one county's Direct supplies form, so nothing typed for
     one county ever shows up in another county's form."""
@@ -282,7 +313,7 @@ with map_col:
         hover = []
         for f in fips_sorted:
             s = state[f]
-            line = s["status_word"]
+            line = s["status_word"] + (" · Manual" if s["manual_marker"] else "")
             if overlay != "Overall" and s["color"] not in (engine.GREY, engine.PURPLE):
                 ll = s["lifelines"][overlay]
                 line += f"<br>{overlay}: {engine.LIFELINE_WORDS[overlay][ll]}"
@@ -370,8 +401,7 @@ def direct_supplies_form(to_fips, state):
                         placeholder="Type a quantity", key=k["qty"])
         if resource:
             options = engine.sender_options(state, resource, to_fips)  # alphabetical only
-            labels = {f: f"{name} · {engine.unit_phrase(on_hand, resource)} on hand"
-                      for f, name, on_hand in options}
+            labels = {f: engine.sender_label(state, f, resource) for f, _, _ in options}
             st.selectbox("Sending county (alphabetical)", [f for f, _, _ in options],
                          index=None, format_func=labels.get,
                          placeholder="Choose the sending county", key=k["from"](resource))
@@ -381,11 +411,65 @@ def direct_supplies_form(to_fips, state):
                      placeholder="Why this move? It is recorded in the action log.")
         st.form_submit_button("Confirm", type="primary",
                               on_click=on_direct_supplies, args=(to_fips,))
-    st.caption("Stock leaves the sender at once. This county's need and color don't change "
-               "until a report confirms delivery.")
+    st.caption("Stock leaves the sender at once. When a report confirms delivery, this "
+               "county's on-hand stock rises and its need drops. Its color doesn't change "
+               "because of a delivery.")
     # Show the last result only on the county and live hour it belongs to.
     if ss.ds_message and ss.get("ds_message_for") == (to_fips, clock_now.live_head):
         (st.error if ss.ds_message.startswith("Not sent") else st.success)(ss.ds_message)
+
+
+def not_live_note(action):
+    c = ss.clock
+    st.info(f"{action} is available only at the live hour ({c.live_head}). You're reviewing "
+            f"hour {c.cursor}. Press Back to live to act.")
+
+
+def log_confirmation_form(fips, state):
+    """Log confirmation: for shipments waiting for a hand confirmation."""
+    waiting = engine.eligible_for_hand_confirmation(state, fips)
+    if not waiting:
+        ui.note("No shipment to this county is waiting for a hand confirmation.")
+        show_form_msg(f"lc_{fips}")  # e.g. the confirmation just logged
+        return
+    if not ss.clock.at_live_head:
+        not_live_note("Log confirmation")
+        return
+    labels = {sh["seq"]: f"{engine.quantity_phrase(sh['quantity'], sh['resource'])} from "
+                         f"{shapes[sh['from']]}, sent hour {sh['dispatched']} (Unconfirmed)"
+              for sh in waiting}
+    with st.form(f"log_confirmation_{fips}", clear_on_submit=False, border=False):
+        st.selectbox("Shipment", list(labels), index=None, format_func=labels.get,
+                     placeholder="Choose the shipment", key=f"lc_ship_{fips}")
+        st.text_area("Reason (required)", key=f"lc_reason_{fips}", height=68,
+                     placeholder="How was the delivery confirmed?")
+        st.form_submit_button("Log confirmation", type="primary",
+                              on_click=on_confirm_delivery, args=(fips,))
+    show_form_msg(f"lc_{fips}")
+
+
+def change_status_form(fips, s):
+    """Change status: Overall or one lifeline, by hand, until the next report on it."""
+    if not ss.clock.at_live_head:
+        not_live_note("Change status")
+        return
+    if s["silent"]:
+        ui.note(f"{s['county']} is silent; its status can't be set until contact returns.")
+        return
+    with st.form(f"change_status_{fips}", clear_on_submit=False, border=False):
+        st.selectbox("Overall or lifeline", engine.STATUS_TARGETS, index=None,
+                     placeholder="Choose Overall or a lifeline", key=f"cs_target_{fips}")
+        st.selectbox("New color", engine.MANUAL_COLORS, index=None,
+                     format_func=lambda c: c.capitalize(), placeholder="Choose the new color",
+                     key=f"cs_color_{fips}")
+        st.text_area("Reason (required)", key=f"cs_reason_{fips}", height=68,
+                     placeholder="Why change it? It is recorded in the action log.")
+        st.form_submit_button("Change status", type="primary",
+                              on_click=on_change_status, args=(fips,))
+    st.caption("The county shows a Manual marker. The manual color holds until the next "
+               "report on that lifeline: if it agrees, Manual clears; if not, both are shown "
+               "as a contradiction and neither is overwritten.")
+    show_form_msg(f"cs_{fips}")
 
 
 with panel_col:
@@ -404,6 +488,7 @@ with panel_col:
             st.subheader(f"{s['county']} County", anchor=False)
             st.html(
                 ui.chip(s["status_word"], color=s["color"]) + "&nbsp;"
+                + (ui.chip("Manual") + "&nbsp;" if s["manual_marker"] else "")
                 + ui.chip(f"FIPS {fips}") + "&nbsp;"
                 + ui.chip("In storm path" if s["hit"] else "Outside storm path")
             )
@@ -431,12 +516,25 @@ with panel_col:
                 body = []
                 for ll in engine.LIFELINES:
                     c = s["lifelines"][ll]
-                    body.append([
-                        ui.e(ll),
-                        ui.status_cell(c, c.capitalize(), engine.LIFELINE_WORDS[ll][c]),
-                        '<span class="sk-muted">AI mode only</span>',
-                    ])
+                    if s["silent"]:
+                        # Muted: grey text, no colored chip. A silent county never
+                        # shows red, yellow or green.
+                        cell = (f'<span class="sk-muted">Last known (hour '
+                                f'{s["lifelines_as_of"]}): {ui.e(c.capitalize())}<br>'
+                                f'<small>{ui.e(engine.LIFELINE_WORDS[ll][c])}</small></span>')
+                    else:
+                        m = s["manual"].get(ll)
+                        detail = engine.LIFELINE_WORDS[ll][c]
+                        if m and m["outcome"] != "cleared":
+                            detail = f"Manual (hour {m['hour']}, {m['role']})"
+                        cell = ui.status_cell(c, c.capitalize(), detail)
+                    body.append([ui.e(ll), cell,
+                                 '<span class="sk-muted">AI mode only</span>'])
                 ui.table(["Lifeline", "Color", "Source report and quote"], body)
+                om = s["manual"].get("Overall")
+                if om and om["outcome"] != "cleared" and not s["silent"]:
+                    ui.note(f"Overall set by hand to {om['color'].capitalize()} at hour "
+                            f"{om['hour']} ({om['role']}).")
 
             # 3. Resources
             ui.section("Resources" if s["hit"] else "Stock available to send")
@@ -452,35 +550,48 @@ with panel_col:
             if s["hit"]:
                 ui.table(["Resource", "Need", "On hand", "In transit"], body, num_cols=(1, 2, 3),
                          caption=("Need is true need from the answer key"
-                                  + (f", as last known at hour {s['lifelines_as_of']}."
-                                     if s["color"] == engine.PURPLE else ".")))
+                                  + (f" as last known at hour {s['lifelines_as_of']}"
+                                     if s["silent"] else "")
+                                  + ", minus confirmed deliveries (never below 0)."))
             else:
                 ui.table(["Resource", "On hand"], body, num_cols=(1,))
 
             # 4. Contradictions
             ui.section("Contradictions")
-            ui.note("AI mode only. Contradictions come from reports the AI reads (Phase 3).")
+            for i, c in enumerate(s["contradictions"]):
+                def side(v):
+                    if s["silent"]:
+                        return f'<span class="sk-muted">{ui.e(v["color"].capitalize())}</span>'
+                    return ui.status_cell(v["color"], v["color"].capitalize())
+                ui.table(
+                    [c["target"], "Hour", "Source"],
+                    [[side(c["manual"]), f"Hour {c['manual']['hour']}", ui.e(c["manual"]["source"])],
+                     [side(c["report"]), f"Hour {c['report']['hour']}", ui.e(c["report"]["source"])]],
+                    caption=f"{c['target']}: the manual value and the next report disagree. "
+                            "Neither is overwritten.",
+                )
+                st.button("Resolve · Coming next", key=f"resolve_{fips}_{i}", disabled=True,
+                          help="Resolving a contradiction is Phase 3.")
+            ui.note("AI-read contradictions: AI mode only (Phase 3).")
 
-            # Shipments to this county (status is "In transit" until delivery
-            # confirmation is built).
+            # Shipments to this county, with their delivery status.
             if s["incoming"]:
                 ui.section("Shipments to this county")
                 ui.table(
                     ["Shipment", "Sent", "Status"],
                     [[ui.e(f"{engine.quantity_phrase(sh['quantity'], sh['resource'])} from "
                            f"{shapes[sh['from']]}"),
-                      f"Hour {sh['dispatched']}", "In transit"] for sh in s["incoming"]],
+                      f"Hour {sh['dispatched']}", ui.e(sh["status"])] for sh in s["incoming"]],
                 )
 
-            # 6. Direct supplies (hit counties only)
+            # 6. Buttons: Direct supplies, Change status, Log confirmation (hit counties)
             if s["hit"]:
                 ui.section("Direct supplies")
                 direct_supplies_form(fips, state)
-
-            with st.container(horizontal=True, gap="small"):
-                for i, label in enumerate(["Change status", "Log confirmation"]):
-                    st.button(f"{label} · Coming next", key=f"panel_{i}", disabled=True,
-                              help="Not built yet.")
+                ui.section("Change status")
+                change_status_form(fips, s)
+                ui.section("Log confirmation")
+                log_confirmation_form(fips, state)
 
 # ---- Action log: read-only, newest first, with the only CSV export ---------------
 with st.container(border=True):

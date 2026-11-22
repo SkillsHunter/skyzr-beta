@@ -51,9 +51,11 @@ def test_log_is_newest_first(sc, log):
 
 
 def test_status_never_says_arrived_not_confirmed(sc, log):
+    """Phase 2B: In transit, then Delivered (hour N) or Unconfirmed. Never "Arrived"."""
     for h in range(HOUR, engine.LAST_HOUR + 1):
         for row in engine.log_rows(log, h, sc):
-            assert row["Status"] == "In transit"
+            assert row["Status"] == "In transit" or row["Status"].startswith(
+                ("Delivered (hour ", "Unconfirmed"))
         assert "Arrived" not in engine.log_csv(log, h, sc)
 
 

@@ -78,18 +78,22 @@ def test_in_transit_for_12_hours_when_receiver_roads_red(sc, receivers):
 
 
 @pytest.mark.parametrize("which", ["roads_ok", "roads_red"])
-def test_receiver_need_and_color_unchanged_on_dispatch_and_arrival(sc, receivers, which):
+def test_receiver_need_and_color_unchanged_on_dispatch(sc, receivers, which):
+    """Phase 2B (approved): need and on-hand stay put until the delivery is
+    confirmed; colors never change because of a shipment, before or after."""
     to = receivers[which]
     log = send(sc, to=to)
-    for h in (HOUR, HOUR + 3, HOUR + 6, HOUR + 12, HOUR + 20):
+    arrives = log[-1].arrives
+    for h in range(HOUR, engine.LAST_HOUR + 1):
         with_log = engine.state_at(h, log, sc)[to]
         without = engine.state_at(h, (), sc)[to]
         assert with_log["color"] == without["color"]
         assert with_log["lifelines"] == without["lifelines"]
-        assert {r: v["need"] for r, v in with_log["resources"].items()} == \
-               {r: v["need"] for r, v in without["resources"].items()}
-        # Unconfirmed shipments never reach on-hand stock.
-        assert with_log["resources"]["Water"]["on_hand"] == without["resources"]["Water"]["on_hand"]
+        if h < arrives:
+            assert {r: v["need"] for r, v in with_log["resources"].items()} == \
+                   {r: v["need"] for r, v in without["resources"].items()}
+            assert with_log["resources"]["Water"]["on_hand"] == \
+                without["resources"]["Water"]["on_hand"]
 
 
 def test_review_before_dispatch_shows_no_shipment(sc, receivers):
