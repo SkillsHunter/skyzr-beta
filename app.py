@@ -131,6 +131,7 @@ def on_reset_confirm():
 
 def on_direct_supplies(to_fips):
     """Confirm button: log one Direct supplies action through the engine."""
+    ss.ds_message_for = (to_fips, ss.clock.live_head)
     try:
         ss.events = engine.direct_supplies(
             ss.events, ss.clock, ss.ds_from, to_fips, ss.ds_resource,
@@ -366,8 +367,11 @@ def direct_supplies_form(to_fips, state):
     else:
         st.selectbox("Sending county (alphabetical)", [], index=None, disabled=True,
                      placeholder="Choose a resource first", key="ds_from_placeholder")
-    st.text_area("Reason (required)", key="ds_reason", height=68,
-                 placeholder="Why this move? It is recorded in the action log.")
+    # Streamlit only registers typed text on Enter or when the box loses focus,
+    # so Confirm (disabled until there is a reason) needs Enter first.
+    st.text_input("Reason (required)", key="ds_reason",
+                  placeholder="Why this move? Press Enter when done.")
+    st.caption("Type the reason and press Enter. Confirm turns on once a reason is in.")
 
     ready = bool(resource and ss.get("ds_qty") and ss.get("ds_from")
                  and (ss.get("ds_reason") or "").strip())
@@ -376,7 +380,8 @@ def direct_supplies_form(to_fips, state):
               help=None if ready else "Choose resource, quantity and sender, and type a reason.")
     st.caption("Stock leaves the sender at once. This county's need and color don't change "
                "until a report confirms delivery.")
-    if ss.ds_message:
+    # Show the last result only on the county and live hour it belongs to.
+    if ss.ds_message and ss.get("ds_message_for") == (to_fips, clock_now.live_head):
         (st.error if ss.ds_message.startswith("Not sent") else st.success)(ss.ds_message)
 
 
