@@ -252,3 +252,32 @@ def test_app_starts_and_shows_why_the_snapshot_did_not_load():
     assert not at.exception
     assert any(c.value == "Readings snapshot not loaded: snapshot made with a different prompt."
                for c in at.caption)
+
+
+# Phase 3I: local fake-AI mode never loads the real snapshot ---------------------------------
+
+def test_fake_ai_mode_does_not_load_the_real_snapshot(monkeypatch):
+    monkeypatch.setenv("SKYZR_FAKE_AI", "1")
+    assert snapshot_io.SNAPSHOT_PATH.exists()  # a real snapshot is committed
+    at = _ai_app()
+    assert not at.exception
+    assert any(c.value == "Readings snapshot not loaded: fake AI mode." for c in at.caption)
+    assert not any(c.value.startswith("Readings:") for c in at.caption)
+    assert all(ai.SHARED_CACHE.meta(k).get("source") != "snapshot"
+               for k in ai.SHARED_CACHE.keys_in(NS))
+    r13 = ai.Intake(fake_ai.client()).read(REPORTS["R13"])
+    assert r13.source == "live"  # the scripted answer, not a snapshot reading
+
+
+def test_without_fake_ai_the_committed_snapshot_loads_as_before(monkeypatch):
+    monkeypatch.delenv("SKYZR_FAKE_AI", raising=False)
+    if _committed_snapshot_is_older():
+        pytest.skip("the committed snapshot was made with an older prompt")
+    expected = snapshot_io.load_snapshot(snapshot_io.SNAPSHOT_PATH, ai.GEMINI_CACHE_NAME,
+                                         ai.SharedCache())
+    at = _ai_app()
+    assert not at.exception
+    line = next(c.value for c in at.caption if c.value.startswith("Readings:"))
+    assert line.startswith(f"Readings: {expected.loaded} of {len(REPORTS)} from snapshot · "
+                           f"Gemini {expected.model} · read ")
+    assert ai.SHARED_CACHE.snapshot_result.loaded == expected.loaded

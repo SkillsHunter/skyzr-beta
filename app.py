@@ -92,9 +92,14 @@ if "intake" not in ss:
 # start (the cache is server-wide). Every entry is quote-checked on load.
 SNAPSHOT_NAMESPACE = "scripted" if FAKE_AI else ai.GEMINI_CACHE_NAME
 if ai.SHARED_CACHE.snapshot_result is None:
-    import snapshot_io
-    ai.SHARED_CACHE.snapshot_result = snapshot_io.load_snapshot(
-        snapshot_io.SNAPSHOT_PATH, SNAPSHOT_NAMESPACE)
+    if FAKE_AI:
+        # Phase 3I: local fake-AI mode never loads the real Gemini snapshot, so local
+        # runs show the scripted answers, not real readings labelled "from snapshot".
+        ai.SHARED_CACHE.snapshot_result = ai.LoadResult(error="fake AI mode")
+    else:
+        import snapshot_io
+        ai.SHARED_CACHE.snapshot_result = snapshot_io.load_snapshot(
+            snapshot_io.SNAPSHOT_PATH, SNAPSHOT_NAMESPACE)
 
 
 def readable_utc(iso):
