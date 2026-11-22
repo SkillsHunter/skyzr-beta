@@ -207,3 +207,12 @@ def test_app_without_snapshot_shows_no_label_and_disables_the_download(monkeypat
     assert not any(c.value.startswith("Readings:") for c in at.caption)
     dl = [w for w in at.get("download_button") if "snapshot" in str(w.proto.label)]
     assert dl and dl[0].proto.disabled
+
+
+# Phase 3G: cots count as Shelter ------------------------------------------------------------
+
+def test_prompt_names_cots_as_shelter():
+    line = ('  Shelter means cots and shelter kits: a request for cots is Shelter, Requested, with '
+            'the number of cots as value (e.g. "We need about forty cots" = Shelter, Requested, 40). '
+            'If a report corrects an earlier number, record the corrected number only.')
+    assert line in ai.SYSTEM_PROMPT

@@ -405,6 +405,7 @@ Extract only these kinds of fact:
 - Water: metric "Systems out of service" with the number of systems out as value whenever a count is stated or clear ("the water system" = 1), and status_word "Out". A count of 0 means no system is out: its status_word is "Normal", never "Out" (e.g. "All three water systems are back in service" = Systems out of service, 0, Normal). Otherwise metric "System status" with status_word Normal, Boil notice or Out and value "Normal", "Boil-water notice" or "System out of service".
 - Health and Medical: metric "Hospital status"; status_word Normal, On generator, Evacuating or Closed; value "Normal", "Hospital on generator or diverting" or "Hospital closed or evacuating".
 - Resource requests: lifeline_or_resource one of Water, Generators, Utility crews, Search-and-rescue teams, Food, Shelter, Medical teams, Hygiene items, Sanitation; metric "Requested"; status_word "Requested"; value the number requested, as a number.
+  Shelter means cots and shelter kits: a request for cots is Shelter, Requested, with the number of cots as value (e.g. "We need about forty cots" = Shelter, Requested, 40). If a report corrects an earlier number, record the corrected number only.
 
 Rules:
 - quote: copy the words from the report that support the fact, exactly as written, word for word. Never paraphrase or fix spelling.
