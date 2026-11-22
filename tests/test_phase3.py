@@ -333,7 +333,9 @@ def test_gemini_key_is_read_only_from_st_secrets(monkeypatch):
 def test_gemini_model_can_be_overridden_in_secrets(monkeypatch):
     monkeypatch.setattr(_st, "secrets", {"GEMINI_API_KEY": "k", "GEMINI_MODEL": "gemini-x"})
     client = ai.GeminiClient(sdk_client=RecordingSDK([]))
-    assert client.model == "gemini-x" and client.cache_name == "gemini:gemini-x"
+    assert client.model == "gemini-x"
+    # Phase 3F: the cache key depends on the prompt and schema, not the model.
+    assert client.cache_name == ai.GEMINI_CACHE_NAME
 
 
 def test_gemini_429_retried_at_most_twice_then_unavailable_and_not_cached():

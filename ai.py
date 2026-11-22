@@ -86,6 +86,9 @@ class ReadResult:
     rejected: tuple = ()  # (raw fact dict, reason), ...
     from_cache: bool = False
     detail: str = ""  # why a call failed (class, HTTP code, API message); never the key
+    source: str = "live"  # "live" (read by the model in this server run) or "snapshot"
+    source_model: str = ""  # the model that made the reading
+    source_created_at: str = ""  # snapshot readings: when the snapshot was made (UTC ISO)
 
 
 # ---- Failure reasons (Phase 3C) ----------------------------------------------------------
@@ -220,19 +223,32 @@ class SharedCache:
 
     def __init__(self):
         self._data = {}
+        self._meta = {}  # key -> {"source": "live"|"snapshot", "model": ..., "created_at": ...}
         self._lock = threading.Lock()
+        self.snapshot_result = None  # LoadResult of this server run's snapshot load
 
     def get(self, key):
         with self._lock:
             return self._data.get(key)
 
-    def put(self, key, raw):
+    def meta(self, key) -> dict:
+        with self._lock:
+            return dict(self._meta.get(key, {}))
+
+    def put(self, key, raw, meta: dict | None = None):
         with self._lock:
             self._data[key] = raw
+            self._meta[key] = dict(meta or {"source": "live"})
+
+    def keys_in(self, namespace: str) -> list:
+        with self._lock:
+            return [k for k in self._data if k[0] == namespace]
 
     def clear(self):
         with self._lock:
             self._data.clear()
+            self._meta.clear()
+            self.snapshot_result = None
 
     def __len__(self):
         return len(self._data)
@@ -264,7 +280,10 @@ class Intake:
         raw = self.cache.get(key)
         if raw is not None:  # no second call for the same text, in any tab
             accepted, rejected = check_facts(raw, report)
-            return ReadResult(rid, "ok", "", report["text"], accepted, rejected, True)
+            m = self.cache.meta(key)
+            return ReadResult(rid, "ok", "", report["text"], accepted, rejected, True,
+                              source=m.get("source", "live"), source_model=m.get("model", ""),
+                              source_created_at=m.get("created_at", ""))
         if self.calls_made >= self.max_calls:
             return ReadResult(rid, "limit", CALL_LIMIT_MESSAGE, report["text"])
         self.calls_made += 1
@@ -276,9 +295,12 @@ class Intake:
             reason = failure_reason(err)
             log.warning("AI call failed for %s: %s", rid, reason)  # server log is owner-only
             return ReadResult(rid, "unavailable", AI_UNAVAILABLE, report["text"], detail=reason)
-        self.cache.put(key, list(raw))  # only successful calls are cached
+        model = getattr(self.client, "model", key[0])
+        self.cache.put(key, list(raw), {"source": "live", "model": model,
+                                        "created_at": _utc_now()})  # only successes are cached
         accepted, rejected = check_facts(raw, report)
-        return ReadResult(rid, "ok", "", report["text"], accepted, rejected)
+        return ReadResult(rid, "ok", "", report["text"], accepted, rejected,
+                          source="live", source_model=model)
 
 
 # ---- Contradictions (design doc p. 9) ------------------------------------------------
@@ -423,6 +445,15 @@ def user_message(payload: dict) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+def _prompt_version() -> str:
+    blob = SYSTEM_PROMPT + "\n" + json.dumps(FACT_SCHEMA, sort_keys=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+PROMPT_VERSION = _prompt_version()  # changes whenever the prompt or the schema changes
+GEMINI_CACHE_NAME = f"gemini:{PROMPT_VERSION}"
+
+
 def check_response_shape(data) -> list:
     """The parsed JSON must fit FACT_SCHEMA exactly (same fields, same enums).
     Anything else raises, so the report shows "AI unavailable" (never a guess)."""
@@ -477,7 +508,9 @@ class GeminiClient:
         if thinking not in GEMINI_THINKING_MODES or schema not in GEMINI_SCHEMA_MODES:
             raise ValueError("GEMINI_THINKING must be minimal or off; GEMINI_SCHEMA full or loose")
         self.model, self.thinking, self.schema = model, thinking, schema
-        self.cache_name = f"gemini:{model}"
+        # The cache key depends on the prompt and schema (PROMPT_VERSION), not the model,
+        # so a snapshot made with another model is still found; its model is labelled.
+        self.cache_name = GEMINI_CACHE_NAME
         if sdk_client is None:
             from google import genai
             from google.genai import types
@@ -538,7 +571,7 @@ class UnavailableClient:
     """Stands in when there is no key or the client can't start: every call
     fails, so every report shows "AI unavailable" and changes nothing."""
 
-    cache_name = "unavailable"
+    cache_name = GEMINI_CACHE_NAME  # stands in for Gemini: cached readings are still served
 
     def __init__(self, why: str = ""):
         self.why = why
@@ -628,3 +661,119 @@ def prepare_summary(res: PrepareResult, total: int) -> str:
     for reason, n in res.reasons.most_common():
         lines.append(f"{n} × {reason}")
     return scrub("\n".join(lines))
+
+
+# ---- AI readings snapshot (Phase 3F) ----------------------------------------------------
+# Pure functions: snapshot_io.py reads and writes the file (ai.py never reads files).
+
+SNAPSHOT_FORMAT_VERSION = 1
+QUOTE_REASON = "quote not found in the report text"
+
+
+def _utc_now() -> str:
+    import datetime
+    return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()
+
+
+def export_snapshot(reports: dict, reports_sha256: str, namespace: str,
+                    cache: SharedCache | None = None) -> dict:
+    """Everything needed to rebuild the cache entries for `namespace`: a header
+    and, per report, its id, the SHA-256 of its text and the raw model output
+    exactly as cached. No key, no Secrets, nothing from the answer key."""
+    cache = cache if cache is not None else SHARED_CACHE
+    by_hash = {text_hash(r["text"]): rid for rid, r in reports.items()}
+    entries, models = [], set()
+    for key in cache.keys_in(namespace):
+        rid = by_hash.get(key[1])
+        if rid is None:
+            continue
+        meta = cache.meta(key)
+        models.add(meta.get("model") or namespace)
+        entries.append({"report_id": rid, "text_sha256": key[1], "facts": cache.get(key)})
+    entries.sort(key=lambda e: e["report_id"])
+    return scrub_snapshot({
+        "format_version": SNAPSHOT_FORMAT_VERSION,
+        "model": ", ".join(sorted(models)) if models else "",
+        "prompt_version": PROMPT_VERSION,
+        "created_at": _utc_now(),
+        "reports_sha256": reports_sha256,
+        "entries": entries,
+    })
+
+
+def scrub_snapshot(data: dict) -> dict:
+    """Belt and braces: no key-shaped string can leave in a snapshot."""
+    return json.loads(scrub(json.dumps(data, ensure_ascii=False)))
+
+
+@dataclass
+class LoadResult:
+    loaded: int = 0
+    rejected: int = 0
+    reasons: Counter = field(default_factory=Counter)
+    model: str = ""
+    created_at: str = ""
+    error: str = ""  # why nothing loaded (no file, bad JSON, wrong version or prompt)
+    fact_rejections: Counter = field(default_factory=Counter)  # facts rejected inside loaded entries
+    note: str = ""  # e.g. reports.csv changed since the snapshot (entries still checked one by one)
+
+    @property
+    def quote_rejections(self) -> int:
+        return self.fact_rejections.get(QUOTE_REASON, 0)
+
+    def short_reason(self) -> str:
+        return "; ".join(f"{n} × {r}" for r, n in self.reasons.most_common())
+
+
+def load_snapshot_data(data, reports: dict, namespace: str, reports_sha256: str = "",
+                       cache: SharedCache | None = None) -> LoadResult:
+    """Load a parsed snapshot into the cache. Every entry goes through the same
+    shape check and quote check as a live answer. An entry for an unknown
+    report, for changed report text, or that doesn't fit the schema is
+    rejected whole (that report stays unread; Prepare reads it live). A fact
+    whose quote isn't in the report is rejected, the same as live: it is
+    counted here and shown as rejected when the report is read."""
+    cache = cache if cache is not None else SHARED_CACHE
+    res = LoadResult()
+    if not isinstance(data, dict):
+        res.error = "not a snapshot (expected a JSON object)"
+        return res
+    if data.get("format_version") != SNAPSHOT_FORMAT_VERSION:
+        res.error = f"unknown format_version {data.get('format_version')!r}"
+        return res
+    if data.get("prompt_version") != PROMPT_VERSION:
+        res.error = "snapshot made with a different prompt"
+        return res
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        res.error = "no entries list"
+        return res
+    res.model = str(data.get("model", ""))
+    res.created_at = str(data.get("created_at", ""))
+    if reports_sha256 and data.get("reports_sha256") != reports_sha256:
+        res.note = "reports.csv changed since the snapshot; entries were checked one by one"
+    for e in entries:
+        reason = None
+        rid = str(e.get("report_id", "")) if isinstance(e, dict) else ""
+        report = reports.get(rid)
+        if report is None:
+            reason = "unknown report_id"
+        elif e.get("text_sha256") != text_hash(report["text"]):
+            reason = "report text changed since the snapshot"
+        else:
+            try:
+                facts = check_response_shape({"facts": e.get("facts")})
+            except ValueError as err:
+                facts, reason = None, f"does not fit the schema ({err})"
+            if facts is not None:
+                _, rejected = check_facts(facts, report)
+                for _, why in rejected:
+                    res.fact_rejections[QUOTE_REASON if "quote" in why else why] += 1
+        if reason:
+            res.rejected += 1
+            res.reasons[reason] += 1
+            continue
+        cache.put((namespace, text_hash(report["text"])), list(facts),
+                  {"source": "snapshot", "model": res.model, "created_at": res.created_at})
+        res.loaded += 1
+    return res

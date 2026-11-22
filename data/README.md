@@ -48,3 +48,6 @@ No report and no feed strictly between these hours. Purple from last contact + 1
 | Caswell | 27 | 51 | 39 to 51 |
 
 Hurricane Kestrel and every report, figure and source here is fictional.
+
+## ai_readings.json (optional)
+A snapshot of the AI's readings of `reports.csv`, made with the app's **Download AI readings snapshot (JSON)** button after Prepare and committed here by hand. On start the app loads it into the AI cache, so AI mode needs no Gemini calls for the reports it covers; Prepare reads only the missing ones. Every entry is checked on load: its report id and text hash must match `reports.csv`, its facts must fit the schema, and each quote must appear word for word in the report (a failing quote is rejected, as for a live reading). A snapshot made with a different prompt or schema loads nothing. The app labels these readings "from snapshot", never live. The file holds no key and nothing from `answer_key.csv`. If it is absent, nothing changes.

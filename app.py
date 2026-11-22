@@ -88,6 +88,39 @@ def make_client():
 if "intake" not in ss:
     ss.intake = ai.Intake(make_client())
 
+# Phase 3F: load data/ai_readings.json into the server-wide cache once per server
+# start (the cache is server-wide). Every entry is quote-checked on load.
+SNAPSHOT_NAMESPACE = "scripted" if FAKE_AI else ai.GEMINI_CACHE_NAME
+if ai.SHARED_CACHE.snapshot_result is None:
+    import snapshot_io
+    ai.SHARED_CACHE.snapshot_result = snapshot_io.load_snapshot(
+        snapshot_io.SNAPSHOT_PATH, SNAPSHOT_NAMESPACE)
+
+
+def readable_utc(iso):
+    import datetime
+    try:
+        t = datetime.datetime.fromisoformat(iso).astimezone(datetime.timezone.utc)
+        return t.strftime("%b %d, %Y %H:%M UTC")
+    except (TypeError, ValueError):
+        return iso or "unknown time"
+
+
+def snapshot_line():
+    """The required label: snapshot readings are never presented as read live."""
+    res = ai.SHARED_CACHE.snapshot_result
+    if res is None or (not res.loaded and res.error == "no snapshot file"):
+        return None
+    if not res.loaded and res.error:
+        return f"Readings snapshot not loaded: {res.error}."
+    n_snap = sum(1 for k in ai.SHARED_CACHE.keys_in(SNAPSHOT_NAMESPACE)
+                 if ai.SHARED_CACHE.meta(k).get("source") == "snapshot")
+    line = (f"Readings: {n_snap} of {len(sc.reports)} from snapshot · Gemini {res.model} · "
+            f"read {readable_utc(res.created_at)} · Prepare reads only missing reports.")
+    if res.rejected:
+        line += f" · {res.rejected} snapshot entries rejected ({res.short_reason()})"
+    return line
+
 
 def ai_mode():
     return ss.mode == "AI mode"
@@ -377,14 +410,28 @@ with st.container(border=True):
                     st.markdown("**Why calls failed (AI unavailable):**\n\n"
                                 + "\n".join(f"- {ui.e(line)}" for line in summary.split("\n")[1:]))
                 # Failed reads aren't kept, so each is tried again at its hour.
-        st.download_button(
-            "Export accepted facts (CSV)",
-            data=engine.accepted_facts_csv(
-                {k: v for k, v in ss.ai_reads.items()
-                 if sc.reports[k]["sim_hour"] <= clock.live_head}),
-            file_name="skyzr_accepted_facts.csv", mime="text/csv",
-            icon=":material/download:",
-            help="Every accepted fact so far: report_id plus the nine fact fields.")
+        line = snapshot_line()
+        if line:
+            st.caption(line)
+        with st.container(horizontal=True, gap="small"):
+            st.download_button(
+                "Export accepted facts (CSV)",
+                data=engine.accepted_facts_csv(
+                    {k: v for k, v in ss.ai_reads.items()
+                     if sc.reports[k]["sim_hour"] <= clock.live_head}),
+                file_name="skyzr_accepted_facts.csv", mime="text/csv",
+                icon=":material/download:",
+                help="Every accepted fact so far: report_id plus the nine fact fields.")
+            import snapshot_io
+            namespace = getattr(ss.intake.client, "cache_name", SNAPSHOT_NAMESPACE)
+            has_readings = bool(ai.SHARED_CACHE.keys_in(namespace))
+            st.download_button(
+                "Download AI readings snapshot (JSON)",
+                data=snapshot_io.export_snapshot_json(namespace) if has_readings else "{}",
+                file_name="ai_readings.json", mime="application/json",
+                icon=":material/download:", disabled=not has_readings,
+                help="Every AI reading in the server cache, so they survive a reboot. "
+                     "Save it as data/ai_readings.json in the repo.")
 
 # ---- Role picker (Proposal): a label, not a login ------------------------------
 with st.container(horizontal=True, vertical_alignment="bottom"):
