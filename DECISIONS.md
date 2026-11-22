@@ -88,3 +88,9 @@ Every item here is a Proposal (design doc) or a plan v2 Fix. If the team says no
 | Silent counties stay in the sender list, labelled e.g. "Bladen · 0 water tankers on hand (last known, hour 12)" | Prompt Phase 2B | `engine.sender_label` | n/a |
 | Log rows: Confirmed delivery reads "1 water tanker, Wake to Pender (sent hour 22)", status "Delivered". Changed status reads "Alamance Communications: set to Red", status "Manual", "Cleared (hour N): next report agreed" or "Contradiction (hour N)" | Design doc p. 6 fields | `engine.log_rows` | Change the strings |
 | Log entries are recognised by their action name, not their Python class, so a session's log keeps working after a code reload (found in the browser check: a reload crashed the log) | Browser check | `engine.is_action` | n/a |
+
+## Added in Phase 2C (Pause fix)
+
+| Item | Source | Where it lives | If the team says no |
+|---|---|---|---|
+| **Pause no longer leaves the screen one hour behind.** Cause (confirmed in the browser with temporary server logging): Pause pressed while a tick's rerun was still on its way carried the slider's old value (live head − 1), and the slider's `on_change` took it for a drag and moved the cursor back. Fix: the app draws a new time slider (new key, `slider_gen` + 1) whenever it moves the cursor itself (tick, Play, Back to live, Reset, snap back to the live head) and remembers the value each slider holds (`slider_held`). `on_slider` ignores a value equal to what that slider already held (it only lags behind playback); any other value is a drag the person made and moves the cursor as before, even if it was made on a slider the app had just replaced. Reviewing any played hour, the snap back from past the live head and its note are unchanged | Plan v2 Fix 2 (Pause stops the live head and leaves the cursor where it was) | `app.slider_key`, `app.renew_slider`, `app.set_clock`, `app.on_slider`; tests `tests/test_app_phase2c.py` | n/a (bug fix) |

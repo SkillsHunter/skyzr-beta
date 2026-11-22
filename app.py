@@ -60,6 +60,8 @@ ss.setdefault("overlay", "Overall")
 ss.setdefault("confirm_reset", False)
 ss.setdefault("last_tick", 0.0)
 ss.setdefault("slider_note", "")
+ss.setdefault("slider_gen", 0)  # see slider_key
+ss.setdefault("slider_held", {0: ss.clock.cursor})  # slider_gen -> value that slider holds
 
 
 # ---- Callbacks ---------------------------------------------------------------
@@ -91,21 +93,31 @@ def on_select_county():
 
 def on_play_pause():
     if ss.clock.playing:
-        ss.clock = engine.pause(ss.clock)
+        set_clock(engine.pause(ss.clock))
     else:
-        ss.clock = engine.play(ss.clock)
+        set_clock(engine.play(ss.clock))
         ss.last_tick = time.monotonic()
     ss.slider_note = ""
 
 
 def on_go_live():
-    ss.clock = engine.move_cursor(ss.clock, ss.clock.live_head)
+    set_clock(engine.move_cursor(ss.clock, ss.clock.live_head))
     ss.slider_note = ""
 
 
-def on_slider():
-    wanted = ss.cursor_slider
+def on_slider(key):
+    """The slider reported a value. Only a value the person moved it to moves
+    the cursor; the value a slider already held only lags behind playback
+    (see slider_key), so it changes nothing."""
+    gen = int(key.rsplit("_", 1)[1])
+    wanted = ss[key]
+    if wanted == ss.slider_held.get(gen):
+        return
     ss.clock = engine.move_cursor(ss.clock, wanted)
+    if key == slider_key() and ss.clock.cursor == wanted:
+        ss.slider_held[gen] = wanted
+    else:  # snapped back to the live head, or dragged on a slider since replaced
+        renew_slider()
     ss.slider_note = (
         f"Hour {wanted} hasn't been played yet. The slider stops at the live hour, "
         f"{ss.clock.live_head}. Press Play to move forward."
@@ -123,7 +135,8 @@ def on_reset_cancel():
 
 
 def on_reset_confirm():
-    ss.clock, ss.events = engine.reset_run()  # clears every test-mode action
+    clock, ss.events = engine.reset_run()  # clears every test-mode action
+    set_clock(clock)
     ss.confirm_reset = False
     ss.slider_note = ""
     ss.ds_message = ""
@@ -179,6 +192,38 @@ def on_change_status(fips):
         ss[t_k], ss[c_k], ss[r_k] = None, None, ""
 
 
+def slider_key():
+    """The time slider's widget key.
+
+    Phase 2C: a click sent while a tick's redraw is still on its way carries
+    the slider's old value (live head - 1). With one fixed key, on_change took
+    that for a drag and moved the cursor back an hour. Now the app draws a new
+    slider (slider_gen + 1) whenever it moves the cursor itself (a tick, Play,
+    Back to live, Reset, a snap back to the live head), and remembers the value
+    each slider holds (slider_held). A lagging value arrives under the old key
+    with the value that slider already held, so on_slider ignores it. A value
+    the person dragged to is new for that slider, so it counts, even if the
+    drag was made on a slider the app had just replaced.
+    """
+    return f"cursor_slider_{ss.slider_gen}"
+
+
+def renew_slider():
+    """Draw a new slider at the cursor (see slider_key)."""
+    ss.slider_gen += 1
+    ss.slider_held[ss.slider_gen] = ss.clock.cursor
+    for old in [g for g in ss.slider_held if g < ss.slider_gen - 100]:
+        del ss.slider_held[old]
+
+
+def set_clock(new):
+    """Every clock change except a slider drag goes through here."""
+    moved = new.cursor != ss.clock.cursor
+    ss.clock = new
+    if moved:
+        renew_slider()
+
+
 def ds_keys(to_fips):
     """Widget keys for one county's Direct supplies form, so nothing typed for
     one county ever shows up in another county's form."""
@@ -207,7 +252,7 @@ def playback_tick():
         return
     if time.monotonic() - ss.last_tick < interval * 0.9:
         return
-    ss.clock = engine.tick(c)
+    set_clock(engine.tick(c))
     ss.last_tick = time.monotonic()
     st.rerun()
 
@@ -283,13 +328,15 @@ with st.container(border=True):
                 st.button("Yes, reset", type="primary", on_click=on_reset_confirm)
                 st.button("Cancel", on_click=on_reset_cancel)
 
-    ss.cursor_slider = clock.cursor
+    key = slider_key()
     st.slider(
         "Time slider (simulated hour on screen)",
         min_value=engine.FIRST_HOUR,
         max_value=engine.LAST_HOUR,
-        key="cursor_slider",
+        value=clock.cursor,
+        key=key,
         on_change=on_slider,
+        args=(key,),
         help="Review any hour already played. You can't drag past the live hour.",
     )
     if ss.slider_note:
