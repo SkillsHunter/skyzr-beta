@@ -25,3 +25,17 @@ Every item here is a Proposal (design doc) or a plan v2 Fix. If the team says no
 | Wake's nearest edge is 0.25 km outside the 50 km band. The generator fails loudly if the hit set changes, and the data check confirms Wake stays grey | Plan v2 §3 | Generator and its checks | Pick another grey sender if the track moves |
 | For the stranger test's "biggest water gap" question, give the tester a mode and an hour: in answer-key mode several counties tie | Plan v2 §6 stranger test | Test script for Kyle | n/a |
 
+
+## Added in Phase 1 (answer-key mode)
+
+| Item | Source | Where it lives | If the team says no |
+|---|---|---|---|
+| Purple runs for hours *last contact + 12 ≤ h < next contact*. At the next contact hour the county is back to its color, so Pender is purple 20 to 35 and back at 36 | Design doc silence rule (Proposal); data README "Purple 20 to 36" | `engine.state_at`, `SILENCE_HOURS` | If 36 should still be purple, change `>=` handling in `state_at` and the tests' `_purple_hours` |
+| Contact = any report or any feed reading for the county (Fix 1) | Plan v2 Fix 1 | `engine.build_scenario` (`contacts`) | Reports only: almost every hit county goes purple (see Fix 1 row above) |
+| While a county is purple, its panel shows lifelines and need *as last known at last contact*, labelled with that hour, not the answer key's current values | Design doc: silent = "Status unknown"; SKYZR doesn't guess | `engine.state_at` (`lifelines_as_of`) | Show the answer key's current values in the panel (the map stays purple either way) |
+| In answer-key mode a non-silent county's lifeline colors and need follow the answer key every hour, not only at report hours | Design doc: "Until the AI reading step works, test mode colors the map straight from the answer key" | `engine.state_at` | n/a |
+| Status words: Urgent need, Moderate need, Needs met or minimal, Silent: no contact, Not hit | Design doc color table (wording shortened) | `engine.STATUS_WORD` | Change the strings |
+| "Last report" counts reports only; "last contact" counts reports and feeds | Design doc panel header; Fix 1 | `engine.state_at` | n/a |
+| Playback: the cursor follows the live head only when it is at the live head; while reviewing an earlier hour during play, the live head keeps moving and the view stays put. "Back to live" jumps the view to the live head without starting play | Plan v2 Fix 2 (doesn't say what play does to a cursor held back) | `engine.tick`, app "Back to live" button | Make any slider move pause playback |
+| Dragging the slider past the live head snaps it back to the live head with a one-line note | Plan v2 Fix 2 | `engine.move_cursor`, `app.on_slider` | n/a |
+| Grey counties show stock to send; their need is blank, not zero | Design doc panel section 3; Fix 4 | `engine.state_at` (`need: None`) | n/a |
