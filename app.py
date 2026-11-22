@@ -130,24 +130,28 @@ def on_reset_confirm():
 
 
 def on_direct_supplies(to_fips):
-    """Confirm button: log one Direct supplies action through the engine."""
+    """Confirm (a form submit): every field arrives together on one click.
+    The engine checks what's missing and applies the rules; nothing is guessed."""
+    k = ds_keys(to_fips)
+    resource = ss.get(k["resource"])
     ss.ds_message_for = (to_fips, ss.clock.live_head)
-    try:
-        ss.events = engine.direct_supplies(
-            ss.events, ss.clock, ss.ds_from, to_fips, ss.ds_resource,
-            int(ss.ds_qty), ss.role, ss.ds_reason, sc,
-        )
-    except engine.ActionRefused as err:
-        ss.ds_message = f"Not sent: {err}"
-        return
-    e = ss.events[-1]
-    ss.ds_message = (
-        f"Logged: {e.quantity} {engine.DETAIL_NOUN[e.resource]}, "
-        f"{shapes[e.from_fips]} to {shapes[e.to_fips]}. In transit."
+    ss.events, ss.ds_message, logged = engine.submit_direct_supplies(
+        ss.events, ss.clock, to_fips, ss.get("role"), resource, ss.get(k["qty"]),
+        ss.get(k["from"](resource)) if resource else None, ss.get(k["reason"]), sc,
     )
-    # Clear the form so nothing carries over to the next send.
-    for k in ("ds_resource", "ds_qty", "ds_from", "ds_reason"):
-        ss[k] = None if k != "ds_reason" else ""
+    if logged:
+        ss[k["resource"]] = None  # outside the form; the form clears itself
+
+
+def ds_keys(to_fips):
+    """Widget keys for one county's Direct supplies form, so nothing typed for
+    one county ever shows up in another county's form."""
+    return {
+        "resource": f"ds_resource_{to_fips}",
+        "qty": f"ds_qty_{to_fips}",
+        "reason": f"ds_reason_{to_fips}",
+        "from": lambda resource: f"ds_from_{to_fips}_{resource}",
+    }
 
 
 # ---- Playback: one fragment advances the live head -------------------------
@@ -348,36 +352,30 @@ def direct_supplies_form(to_fips, state):
             f"You're reviewing hour {clock_now.cursor}. Press Back to live to act."
         )
         return
-    if not ss.role:
-        st.info("Choose your role at the top of the page first. It is stamped on every action.")
-        return
-
+    # Resource is outside the form, so changing it refreshes the sender list
+    # with that resource's stock.
+    k = ds_keys(to_fips)
     st.selectbox("Resource", engine.RESOURCE_NAMES, index=None,
-                 placeholder="Choose a resource", key="ds_resource")
-    st.number_input("Quantity", min_value=1, step=1, value=None,
-                    placeholder="Type a quantity", key="ds_qty")
-    resource = ss.get("ds_resource")
-    if resource:
-        options = engine.sender_options(state, resource, to_fips)  # alphabetical only
-        labels = {f: f"{name} · {on_hand} {UNITS[resource]} on hand"
-                  for f, name, on_hand in options}
-        st.selectbox("Sending county (alphabetical)", [f for f, _, _ in options], index=None,
-                     format_func=labels.get, placeholder="Choose the sending county",
-                     key="ds_from")
-    else:
-        st.selectbox("Sending county (alphabetical)", [], index=None, disabled=True,
-                     placeholder="Choose a resource first", key="ds_from_placeholder")
-    # Streamlit only registers typed text on Enter or when the box loses focus,
-    # so Confirm (disabled until there is a reason) needs Enter first.
-    st.text_input("Reason (required)", key="ds_reason",
-                  placeholder="Why this move? Press Enter when done.")
-    st.caption("Type the reason and press Enter. Confirm turns on once a reason is in.")
+                 placeholder="Choose a resource", key=k["resource"])
+    resource = ss.get(k["resource"])
 
-    ready = bool(resource and ss.get("ds_qty") and ss.get("ds_from")
-                 and (ss.get("ds_reason") or "").strip())
-    st.button("Confirm", type="primary", disabled=not ready,
-              on_click=on_direct_supplies, args=(to_fips,),
-              help=None if ready else "Choose resource, quantity and sender, and type a reason.")
+    # Everything else is one form: all fields are sent together on one click.
+    with st.form(f"direct_supplies_{to_fips}", clear_on_submit=True, border=False):
+        st.number_input("Quantity", min_value=1, step=1, value=None,
+                        placeholder="Type a quantity", key=k["qty"])
+        if resource:
+            options = engine.sender_options(state, resource, to_fips)  # alphabetical only
+            labels = {f: f"{name} · {on_hand} {UNITS[resource]} on hand"
+                      for f, name, on_hand in options}
+            st.selectbox("Sending county (alphabetical)", [f for f, _, _ in options],
+                         index=None, format_func=labels.get,
+                         placeholder="Choose the sending county", key=k["from"](resource))
+        else:
+            st.caption("Sending county: choose a resource above to see each county's stock.")
+        st.text_area("Reason (required)", key=k["reason"], height=68,
+                     placeholder="Why this move? It is recorded in the action log.")
+        st.form_submit_button("Confirm", type="primary",
+                              on_click=on_direct_supplies, args=(to_fips,))
     st.caption("Stock leaves the sender at once. This county's need and color don't change "
                "until a report confirms delivery.")
     # Show the last result only on the county and live hour it belongs to.

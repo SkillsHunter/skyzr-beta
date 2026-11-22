@@ -570,3 +570,53 @@ def sender_options(state: dict, resource: str, receiver_fips: str) -> list[tuple
 def reset_run() -> tuple[Clock, tuple]:
     """Reset: hour 0 and an empty log. Clears every test-mode action."""
     return Clock(), ()
+
+
+# ---- Direct supplies form handler (Confirm is always clickable) ------------
+
+MISSING_MESSAGES = {
+    "role": "Choose your role at the top of the page first: every action is stamped with one.",
+    "resource": "Choose a resource first.",
+    "quantity": "Type a quantity first.",
+    "sender": "Choose the sending county first.",
+    "reason": "Type a reason first: every action needs one.",
+}
+
+
+def missing_fields(role, resource, quantity, from_fips, reason) -> list[str]:
+    """Which required fields of the Direct supplies form are empty, in form order."""
+    missing = []
+    if not (isinstance(role, str) and role.strip()):
+        missing.append("role")
+    if not resource:
+        missing.append("resource")
+    if quantity is None or quantity == "":
+        missing.append("quantity")
+    if not from_fips:
+        missing.append("sender")
+    if not (isinstance(reason, str) and reason.strip()):
+        missing.append("reason")
+    return missing
+
+
+def submit_direct_supplies(events, clock: Clock, to_fips: str, role, resource, quantity,
+                           from_fips, reason, scenario: Scenario | None = None):
+    """What one click on Confirm does. Returns (events, message, logged).
+
+    If anything is missing or the rules refuse the send, the log comes back
+    unchanged and the message says why. Nothing is ever guessed or filled in."""
+    sc = scenario or default_scenario()
+    events = tuple(events)
+    missing = missing_fields(role, resource, quantity, from_fips, reason)
+    if missing:
+        return events, "Not sent. " + " ".join(MISSING_MESSAGES[m] for m in missing), False
+    if isinstance(quantity, float) and quantity.is_integer():
+        quantity = int(quantity)
+    try:
+        new = direct_supplies(events, clock, from_fips, to_fips, resource, quantity,
+                              role, reason, sc)
+    except ActionRefused as err:
+        return events, f"Not sent: {err}", False
+    e = new[-1]
+    return new, (f"Logged: {e.quantity} {DETAIL_NOUN[e.resource]}, "
+                 f"{sc.names[e.from_fips]} to {sc.names[e.to_fips]}. In transit."), True
