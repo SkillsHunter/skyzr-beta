@@ -406,6 +406,7 @@ Extract only these kinds of fact:
 - Health and Medical: metric "Hospital status"; status_word Normal, On generator, Evacuating or Closed; value "Normal", "Hospital on generator or diverting" or "Hospital closed or evacuating".
 - Resource requests: lifeline_or_resource one of Water, Generators, Utility crews, Search-and-rescue teams, Food, Shelter, Medical teams, Hygiene items, Sanitation; metric "Requested"; status_word "Requested"; value the number requested, as a number.
   Shelter means cots and shelter kits: a request for cots is Shelter, Requested, with the number of cots as value (e.g. "We need about forty cots" = Shelter, Requested, 40). If a report corrects an earlier number, record the corrected number only.
+  What each resource covers: Water = water tankers; Generators = generators; Utility crews = utility or line crews; Search-and-rescue teams = search-and-rescue teams; Food = pallets of meals or food; Shelter = cots and shelter kits; Medical teams = medical teams; Hygiene items = hygiene kits; Sanitation = portable toilets and handwashing units. One report can request several resources: return one fact per resource (e.g. "Please send three generators and six hygiene kits" = Generators, Requested, 3 and Hygiene items, Requested, 6).
 
 Rules:
 - quote: copy the words from the report that support the fact, exactly as written, word for word. Never paraphrase or fix spelling.

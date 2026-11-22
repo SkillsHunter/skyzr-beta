@@ -216,3 +216,39 @@ def test_prompt_names_cots_as_shelter():
             'the number of cots as value (e.g. "We need about forty cots" = Shelter, Requested, 40). '
             'If a report corrects an earlier number, record the corrected number only.')
     assert line in ai.SYSTEM_PROMPT
+
+
+# Phase 3H: resource words mapped to categories ---------------------------------------------
+
+def test_prompt_maps_resource_words_to_categories():
+    line = '  What each resource covers: Water = water tankers; Generators = generators; Utility crews = utility or line crews; Search-and-rescue teams = search-and-rescue teams; Food = pallets of meals or food; Shelter = cots and shelter kits; Medical teams = medical teams; Hygiene items = hygiene kits; Sanitation = portable toilets and handwashing units. One report can request several resources: return one fact per resource (e.g. "Please send three generators and six hygiene kits" = Generators, Requested, 3 and Hygiene items, Requested, 6).'
+    assert line in ai.SYSTEM_PROMPT
+    shelter = ai.SYSTEM_PROMPT.index("Shelter means cots and shelter kits")
+    assert ai.SYSTEM_PROMPT.index("What each resource covers") > shelter  # right after 3G's line
+
+
+def test_prompt_example_is_not_taken_from_the_reports():
+    example = "Please send three generators and six hygiene kits"
+    assert example in ai.SYSTEM_PROMPT
+    assert all(example.lower() not in r["text"].lower() for r in REPORTS.values())
+
+
+def _committed_snapshot_is_older():
+    data = json.loads(snapshot_io.SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    return data.get("prompt_version") != ai.PROMPT_VERSION
+
+
+def test_committed_snapshot_made_with_an_older_prompt_loads_nothing():
+    if not snapshot_io.SNAPSHOT_PATH.exists() or not _committed_snapshot_is_older():
+        pytest.skip("the committed snapshot matches the current prompt")
+    res = snapshot_io.load_snapshot(snapshot_io.SNAPSHOT_PATH, ai.GEMINI_CACHE_NAME, ai.SharedCache())
+    assert res.loaded == 0 and res.error == "snapshot made with a different prompt"
+
+
+def test_app_starts_and_shows_why_the_snapshot_did_not_load():
+    if not snapshot_io.SNAPSHOT_PATH.exists() or not _committed_snapshot_is_older():
+        pytest.skip("the committed snapshot matches the current prompt")
+    at = _ai_app()  # real (non-fake) client path: no key here, so the stand-in client
+    assert not at.exception
+    assert any(c.value == "Readings snapshot not loaded: snapshot made with a different prompt."
+               for c in at.caption)
