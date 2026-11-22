@@ -1,807 +1,845 @@
 {
-  "format_version": 1,
-  "model": "gemini-3.5-flash-lite",
-  "prompt_version": "361e81329aba28c5",
-  "created_at": "2026-11-22T20:14:44+00:00",
-  "reports_sha256": "d97361651fb4fc66437c5f6471cd887987d8684d4c399cbf7f9a4d1d27fd4ffa",
-  "entries": [
+ "format_version": 1,
+ "model": "gemini-3.5-flash-lite",
+ "prompt_version": "3ecd895e5ba65fb8",
+ "created_at": "2026-11-22T20:47:42+00:00",
+ "reports_sha256": "d97361651fb4fc66437c5f6471cd887987d8684d4c399cbf7f9a4d1d27fd4ffa",
+ "entries": [
+  {
+   "report_id": "R01",
+   "text_sha256": "2b167c82ac2e7f5bfbe9a2708fc149a7dc432680600f276202677eab34e21c97",
+   "facts": [
     {
-      "report_id": "R01",
-      "text_sha256": "2b167c82ac2e7f5bfbe9a2708fc149a7dc432680600f276202677eab34e21c97",
-      "facts": [
-        {
-          "county": "New Hanover",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "No open route to county seat",
-          "status_word": "No route",
-          "quote": "there is no open route into Wilmington, the county seat"
-        }
-      ]
-    },
-    {
-      "report_id": "R02",
-      "text_sha256": "452bfc5c4237c11e027f8fcf9eac5b2053f3dcc5b77679ce7ac9107c7b69e1ac",
-      "facts": [
-        {
-          "county": "Brunswick",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "No open route to county seat",
-          "status_word": "No route",
-          "quote": "nobody can get in or out of brunswick county"
-        }
-      ]
-    },
-    {
-      "report_id": "R03",
-      "text_sha256": "957b16c0b22a66f9607ca87030d3de90279fc29feda3ff76a758cb2cb2b407f7",
-      "facts": [
-        {
-          "county": "New Hanover",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Boil-water notice",
-          "status_word": "Boil notice",
-          "quote": "A boil-water notice is in effect for all customers until further notice."
-        }
-      ]
-    },
-    {
-      "report_id": "R04",
-      "text_sha256": "3cb5bb584f5dbd6c84d69bca3ba97cfda9bdc5961ec466a025c3d951c1b50fb4",
-      "facts": [
-        {
-          "county": "New Hanover",
-          "lifeline_or_resource": "Health and Medical",
-          "metric": "Hospital status",
-          "value": "Hospital on generator or diverting",
-          "status_word": "On generator",
-          "quote": "A hospital in Wilmington is on generator power and diverting ambulances to inland hospitals."
-        }
-      ]
-    },
-    {
-      "report_id": "R05",
-      "text_sha256": "82b459d73418642d64bab654d699c771b23f987cb143751345eb49a39088105a",
-      "facts": [
-        {
-          "county": "Onslow",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 1,
-          "status_word": "Out",
-          "quote": "no water coming out of the taps anywhere in onslow county"
-        }
-      ]
-    },
-    {
-      "report_id": "R06",
-      "text_sha256": "b5ef2093b349ddfbb8da4b05842ab454fc8921d66466cff95865df7731a61a62",
-      "facts": [
-        {
-          "county": "Pender",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "No open route to county seat",
-          "status_word": "No route",
-          "quote": "there is no open route to the county seat"
-        }
-      ]
-    },
-    {
-      "report_id": "R07",
-      "text_sha256": "d4177388646303ec4717a1162e7903744698c0eec0a791c282ec0b079a352871",
-      "facts": [
-        {
-          "county": "Columbus",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "About a third of primary routes are closed."
-        }
-      ]
-    },
-    {
-      "report_id": "R08",
-      "text_sha256": "a4881a7c559d4615923eefd584d1be915e99ca673b63ce7362f7e1b851214210",
-      "facts": [
-        {
-          "county": "Bladen",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 2,
-          "status_word": "Out",
-          "quote": "Two water systems are out of service"
-        },
-        {
-          "county": "Bladen",
-          "lifeline_or_resource": "Health and Medical",
-          "metric": "Hospital status",
-          "value": "Hospital on generator or diverting",
-          "status_word": "On generator",
-          "quote": "a hospital in the county is on generator"
-        }
-      ]
-    },
-    {
-      "report_id": "R09",
-      "text_sha256": "adbe3d4ddc5c685ce118082dfc102b5ec756459d838a64f9b0162150052b2b35",
-      "facts": [
-        {
-          "county": "Brunswick",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "Several primary routes are closed by flooding"
-        }
-      ]
-    },
-    {
-      "report_id": "R10",
-      "text_sha256": "ece87f764f4e0bf544e0bb0f48a10bc10c34a250f0644bd8cfbeb76537aea9b9",
-      "facts": [
-        {
-          "county": "New Hanover",
-          "lifeline_or_resource": "Generators",
-          "metric": "Requested",
-          "value": 7,
-          "status_word": "Requested",
-          "quote": "Requesting seven generators"
-        }
-      ]
-    },
-    {
-      "report_id": "R11",
-      "text_sha256": "e1be668aab3841fa9d2d714491a653f67ef0498a81f6654b6fb35805954f515b",
-      "facts": [
-        {
-          "county": "Sampson",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Open",
-          "status_word": "Open",
-          "quote": "Primary routes are open"
-        }
-      ]
-    },
-    {
-      "report_id": "R12",
-      "text_sha256": "a055ebba75e17871e45c1df7d39a92ce8445a839d77d53d738b92bc1b411bf63",
-      "facts": [
-        {
-          "county": "Onslow",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Normal",
-          "status_word": "Normal",
-          "quote": "The county water system is operating normally."
-        }
-      ]
-    },
-    {
-      "report_id": "R13",
-      "text_sha256": "154e583f53d542dfce6b798bae923c8ddd4a8a177c23b4dd8e5edc8d537d06bd",
-      "facts": [
-        {
-          "county": "Robeson",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 3,
-          "status_word": "Out",
-          "quote": "three municipal water systems are offline"
-        },
-        {
-          "county": "Robeson",
-          "lifeline_or_resource": "Health and Medical",
-          "metric": "Hospital status",
-          "value": "Hospital on generator or diverting",
-          "status_word": "On generator",
-          "quote": "a hospital in Lumberton is on generator"
-        }
-      ]
-    },
-    {
-      "report_id": "R14",
-      "text_sha256": "d068a184da7847f364596f9e723596959f2dde53a1945fe004927ee9ebfcbcea",
-      "facts": [
-        {
-          "county": "Cumberland",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "No open route to county seat",
-          "status_word": "No route",
-          "quote": "no open route to the county seat"
-        }
-      ]
-    },
-    {
-      "report_id": "R15",
-      "text_sha256": "b6492bce095e799d82145d7f4726b4427b522c4c1d726518d5b3ed5aa58c8761",
-      "facts": [
-        {
-          "county": "Columbus",
-          "lifeline_or_resource": "Shelter",
-          "metric": "Requested",
-          "value": 200,
-          "status_word": "Requested",
-          "quote": "We need about two hundred cots."
-        }
-      ]
-    },
-    {
-      "report_id": "R17",
-      "text_sha256": "2d4ab5217f4532d6a58efe7e49a423a2efc123a8ade4682cea55cddd8e05dbf9",
-      "facts": [
-        {
-          "county": "Hoke",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "Several primary routes are closed"
-        },
-        {
-          "county": "Hoke",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Boil-water notice",
-          "status_word": "Boil notice",
-          "quote": "boil-water notice"
-        }
-      ]
-    },
-    {
-      "report_id": "R18",
-      "text_sha256": "63002621cf54777114864d59d839fd91f7ec896bb152cdb09c61c82c31b6ee12",
-      "facts": [
-        {
-          "county": "Cumberland",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "Only some primary routes remain closed."
-        }
-      ]
-    },
-    {
-      "report_id": "R19",
-      "text_sha256": "f93291d7384ff42530e9aa56b9437b453e30bf5822bdccc3b89f4687562af3d5",
-      "facts": [
-        {
-          "county": "Columbus",
-          "lifeline_or_resource": "Shelter",
-          "metric": "Requested",
-          "value": 120,
-          "status_word": "Requested",
-          "quote": "we need one hundred twenty cots"
-        }
-      ]
-    },
-    {
-      "report_id": "R20",
-      "text_sha256": "7ffaedba9dafcf34942bc94e78fde3d6a76e273402958b60e4d0b3c0c772e1c5",
-      "facts": [
-        {
-          "county": "Cumberland",
-          "lifeline_or_resource": "Search-and-rescue teams",
-          "metric": "Requested",
-          "value": 3,
-          "status_word": "Requested",
-          "quote": "three search-and-rescue teams"
-        },
-        {
-          "county": "Cumberland",
-          "lifeline_or_resource": "Generators",
-          "metric": "Requested",
-          "value": 5,
-          "status_word": "Requested",
-          "quote": "five generators"
-        }
-      ]
-    },
-    {
-      "report_id": "R21",
-      "text_sha256": "0eb6268f2ee242b15df23942f7a02fb016904823a7bde44f19edcd138fc4d002",
-      "facts": [
-        {
-          "county": "Harnett",
-          "lifeline_or_resource": "Health and Medical",
-          "metric": "Hospital status",
-          "value": "Hospital on generator or diverting",
-          "status_word": "On generator",
-          "quote": "The main hospital is on generator and diverting non-critical patients."
-        }
-      ]
-    },
-    {
-      "report_id": "R22",
-      "text_sha256": "8d9e166488242d428a4b3e4d20e56c4bf5d5d98a832734c01d0e753bccbf3fcd",
-      "facts": [
-        {
-          "county": "Scotland",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 1,
-          "status_word": "Out",
-          "quote": "Laurinburg's water system is out of service."
-        },
-        {
-          "county": "Scotland",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Open",
-          "status_word": "Open",
-          "quote": "Roads are open."
-        }
-      ]
-    },
-    {
-      "report_id": "R23",
-      "text_sha256": "f0c8ca8c124c1a40ebc9a9b8924b713526bf1bbe82c80f9d0d82a7175b16087f",
-      "facts": [
-        {
-          "county": "Moore",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 2,
-          "status_word": "Out",
-          "quote": "Two water systems are out of service in the southern part of the county."
-        }
-      ]
-    },
-    {
-      "report_id": "R24",
-      "text_sha256": "424edb80a30adfb5020e3960032ec93d6d9cd3372070974d366500e4e8b10a21",
-      "facts": [
-        {
-          "county": "Harnett",
-          "lifeline_or_resource": "Health and Medical",
-          "metric": "Hospital status",
-          "value": "Hospital closed or evacuating",
-          "status_word": "Evacuating",
-          "quote": "the main hospital has begun evacuating patients."
-        }
-      ]
-    },
-    {
-      "report_id": "R25",
-      "text_sha256": "4557ebea2a55eb939b89c0f22ed991d6a2cc16a403b61523426b62947bcbf3d6",
-      "facts": [
-        {
-          "county": "Richmond",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "Some primary routes are closed"
-        },
-        {
-          "county": "Richmond",
-          "lifeline_or_resource": "Health and Medical",
-          "metric": "Hospital status",
-          "value": "Hospital on generator or diverting",
-          "status_word": "On generator",
-          "quote": "a hospital in the county is on generator."
-        }
-      ]
-    },
-    {
-      "report_id": "R26",
-      "text_sha256": "919e8058713d18dd1853aa1f2475bb681e567312b2d89bf55992a3ae9500f5ec",
-      "facts": [
-        {
-          "county": "Moore",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 5,
-          "status_word": "Out",
-          "quote": "five water systems out of service"
-        }
-      ]
-    },
-    {
-      "report_id": "R27",
-      "text_sha256": "d57c506a5bc428319781643e6b85b89c8ba74ed684275c664be4ecb653da6431",
-      "facts": [
-        {
-          "county": "Guilford",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "No open route to county seat",
-          "status_word": "No route",
-          "quote": "No open route to the county seat at this time."
-        }
-      ]
-    },
-    {
-      "report_id": "R28",
-      "text_sha256": "1d0e6bc29beb23c8bbce645a833104a60f57277243d3a0bb69080ba5c7f60b29",
-      "facts": [
-        {
-          "county": "Harnett",
-          "lifeline_or_resource": "Medical teams",
-          "metric": "Requested",
-          "value": 2,
-          "status_word": "Requested",
-          "quote": "two medical teams"
-        }
-      ]
-    },
-    {
-      "report_id": "R29",
-      "text_sha256": "228a09983d2cfbdaa251d06a8f542ef28f690aeb7fcd11e11961420f3a1d9817",
-      "facts": [
-        {
-          "county": "Lee",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Boil-water notice",
-          "status_word": "Boil notice",
-          "quote": "A boil-water notice is in effect for Sanford."
-        }
-      ]
-    },
-    {
-      "report_id": "R30",
-      "text_sha256": "c45c1a755769442f41bfbfdfd652bbcf70f43f912922b5631ca4ddeee29c25e3",
-      "facts": [
-        {
-          "county": "Guilford",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "Some primary routes into Greensboro remain closed."
-        }
-      ]
-    },
-    {
-      "report_id": "R31",
-      "text_sha256": "787c4d6f161cf90e72598e97b9b23c1239c4961792099d808ed039d81c918e1e",
-      "facts": [
-        {
-          "county": "Sampson",
-          "lifeline_or_resource": "Shelter",
-          "metric": "Requested",
-          "value": 40,
-          "status_word": "Requested",
-          "quote": "We need about forty cots for the shelter at the high school."
-        }
-      ]
-    },
-    {
-      "report_id": "R32",
-      "text_sha256": "33964477ab201bd4ecf828ef2b1a2052046627d1441f06709e4022858f016a95",
-      "facts": [
-        {
-          "county": "Chatham",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "Some primary routes are closed by flooding along the Haw River."
-        }
-      ]
-    },
-    {
-      "report_id": "R33",
-      "text_sha256": "35f6a4cab70ccd33a4b9b3315412b67c7a685d554d24a6cc65a49125aaa9a233",
-      "facts": [
-        {
-          "county": "Randolph",
-          "lifeline_or_resource": "Health and Medical",
-          "metric": "Hospital status",
-          "value": "Hospital on generator or diverting",
-          "status_word": "On generator",
-          "quote": "is on generator power"
-        }
-      ]
-    },
-    {
-      "report_id": "R34",
-      "text_sha256": "4e4f38c7bb6d1253ee7403250f65fa165c8d52d0da2b0bc7f673be5e553f10e5",
-      "facts": [
-        {
-          "county": "Sampson",
-          "lifeline_or_resource": "Shelter",
-          "metric": "Requested",
-          "value": 110,
-          "status_word": "Requested",
-          "quote": "We need roughly one hundred ten cots and shelter kits."
-        }
-      ]
-    },
-    {
-      "report_id": "R35",
-      "text_sha256": "dca7b06f6a3e721b33c9f4b07c5360d251c38fe1db0da318d65c8fdbf289bf45",
-      "facts": [
-        {
-          "county": "Bladen",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 1,
-          "status_word": "Out",
-          "quote": "One water system is still out of service"
-        },
-        {
-          "county": "Bladen",
-          "lifeline_or_resource": "Health and Medical",
-          "metric": "Hospital status",
-          "value": "Hospital closed or evacuating",
-          "status_word": "Closed",
-          "quote": "a hospital in the county has closed"
-        }
-      ]
-    },
-    {
-      "report_id": "R36",
-      "text_sha256": "01dae4f602ee14de3c9dab8d466cdce44f7b23aa06a6b18087e40987888ae70f",
-      "facts": [
-        {
-          "county": "Pender",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "No open route to county seat",
-          "status_word": "No route",
-          "quote": "still no open route to the county seat"
-        },
-        {
-          "county": "Pender",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 1,
-          "status_word": "Out",
-          "quote": "the water system is out of service"
-        },
-        {
-          "county": "Pender",
-          "lifeline_or_resource": "Water",
-          "metric": "Requested",
-          "value": 4,
-          "status_word": "Requested",
-          "quote": "four water tankers"
-        }
-      ]
-    },
-    {
-      "report_id": "R37",
-      "text_sha256": "bea7cef3ada2ec18bb1a4122856c2202a1b8b7457b4a5d6159f95dfc07d0bce5",
-      "facts": [
-        {
-          "county": "Alamance",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Boil-water notice",
-          "status_word": "Boil notice",
-          "quote": "A boil-water notice is in effect in Burlington."
-        }
-      ]
-    },
-    {
-      "report_id": "R38",
-      "text_sha256": "24b82ad66c995dca694e3bdf6cf6296865b68bcc1cbd981453f74cdb782e95e0",
-      "facts": [
-        {
-          "county": "Montgomery",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "Several primary routes were closed by mudslides and remain closed"
-        },
-        {
-          "county": "Montgomery",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Boil-water notice",
-          "status_word": "Boil notice",
-          "quote": "one water system is under a boil-water notice"
-        }
-      ]
-    },
-    {
-      "report_id": "R39",
-      "text_sha256": "cf21057f5abd220a698a1401640e93837e5c8284b78d1536cb4b19b8cff7f8a6",
-      "facts": [
-        {
-          "county": "Scotland",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 0,
-          "status_word": "Normal",
-          "quote": "water is back everywhere in scotland county, laurinburg all good now!!"
-        }
-      ]
-    },
-    {
-      "report_id": "R40",
-      "text_sha256": "0886f703647f14b53cc4cc20b28f33e2bf349a33af075881c318627144ad326f",
-      "facts": [
-        {
-          "county": "Rockingham",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "Some primary routes are closed by flooding on the Dan River."
-        }
-      ]
-    },
-    {
-      "report_id": "R41",
-      "text_sha256": "d9bc299983cfb7e922f5579ce3d3123b024a4f69146a247659a2b6830816429f",
-      "facts": [
-        {
-          "county": "Cumberland",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "some primary routes are still closed"
-        }
-      ]
-    },
-    {
-      "report_id": "R42",
-      "text_sha256": "a25a58b0d637fa83884007ff2400452142a48545f26eb056cdcbee604689552e",
-      "facts": [
-        {
-          "county": "New Hanover",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "some primary routes remain closed"
-        }
-      ]
-    },
-    {
-      "report_id": "R43",
-      "text_sha256": "a4cf006662942ba3790a94a84b480ce7e8f7bd5e0db70035bf3f1680962f284f",
-      "facts": [
-        {
-          "county": "Robeson",
-          "lifeline_or_resource": "Food",
-          "metric": "Requested",
-          "value": 13,
-          "status_word": "Requested",
-          "quote": "Requesting thirteen pallets of meals"
-        },
-        {
-          "county": "Robeson",
-          "lifeline_or_resource": "Hygiene items",
-          "metric": "Requested",
-          "value": 100,
-          "status_word": "Requested",
-          "quote": "one hundred hygiene kits"
-        }
-      ]
-    },
-    {
-      "report_id": "R44",
-      "text_sha256": "24a3f3f97aaee9281e68525875b43b5603951e203792859c1a5ccdad1bcf3305",
-      "facts": [
-        {
-          "county": "Robeson",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 0,
-          "status_word": "Normal",
-          "quote": "All three water systems are back in service"
-        },
-        {
-          "county": "Robeson",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Boil-water notice",
-          "status_word": "Boil notice",
-          "quote": "a boil-water notice remains in effect"
-        }
-      ]
-    },
-    {
-      "report_id": "R45",
-      "text_sha256": "ee6748accbe66a323d6bec162d7376c191bac136f86a83d0752b999ef7d735d7",
-      "facts": [
-        {
-          "county": "Caswell",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Some primary routes closed",
-          "status_word": "Partly closed",
-          "quote": "Some primary routes are closed"
-        },
-        {
-          "county": "Caswell",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Boil-water notice",
-          "status_word": "Boil notice",
-          "quote": "Yanceyville's water system is under a boil-water notice."
-        }
-      ]
-    },
-    {
-      "report_id": "R46",
-      "text_sha256": "a5465c64ae4b090d6ec299501a768c801ca54c5acac94aeff57f4a19aad9a8be",
-      "facts": [
-        {
-          "county": "Harnett",
-          "lifeline_or_resource": "Health and Medical",
-          "metric": "Hospital status",
-          "value": "Hospital on generator or diverting",
-          "status_word": "On generator",
-          "quote": "is still on generator"
-        }
-      ]
-    },
-    {
-      "report_id": "R47",
-      "text_sha256": "1b74ed60fa01649877255af0e418947ef37c80b7519e3a66937b7362f132c000",
-      "facts": [
-        {
-          "county": "New Hanover",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Normal",
-          "status_word": "Normal",
-          "quote": "The boil-water notice has been lifted"
-        }
-      ]
-    },
-    {
-      "report_id": "R48",
-      "text_sha256": "a6eccc91a82d489b82955a5b478d9e0a4ace301cbd904d7922f41c910f2d3f47",
-      "facts": [
-        {
-          "county": "Hoke",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Open",
-          "status_word": "Open",
-          "quote": "All primary routes are open"
-        },
-        {
-          "county": "Hoke",
-          "lifeline_or_resource": "Water",
-          "metric": "System status",
-          "value": "Normal",
-          "status_word": "Normal",
-          "quote": "the boil-water notice for Raeford has been lifted"
-        }
-      ]
-    },
-    {
-      "report_id": "R49",
-      "text_sha256": "66ba0929cbded35b0748340ef827b8fb04e630fe3e37a7ccb0cce0470164a8c4",
-      "facts": [
-        {
-          "county": "Moore",
-          "lifeline_or_resource": "Water",
-          "metric": "Systems out of service",
-          "value": 0,
-          "status_word": "Normal",
-          "quote": "All water systems in the county are back in service."
-        }
-      ]
-    },
-    {
-      "report_id": "R50",
-      "text_sha256": "112b2906e0d56dd32ea23d0862a456e19c1a83dadae7e7e1193b34180472a9ec",
-      "facts": [
-        {
-          "county": "Brunswick",
-          "lifeline_or_resource": "Roads",
-          "metric": "Route status",
-          "value": "Open",
-          "status_word": "Open",
-          "quote": "All primary routes are open again."
-        }
-      ]
+     "county": "New Hanover",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "No open route to county seat",
+     "status_word": "No route",
+     "quote": "no open route into Wilmington, the county seat"
     }
-  ]
+   ]
+  },
+  {
+   "report_id": "R02",
+   "text_sha256": "452bfc5c4237c11e027f8fcf9eac5b2053f3dcc5b77679ce7ac9107c7b69e1ac",
+   "facts": [
+    {
+     "county": "Brunswick",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "No open route to county seat",
+     "status_word": "No route",
+     "quote": "nobody can get in or out of brunswick county"
+    }
+   ]
+  },
+  {
+   "report_id": "R03",
+   "text_sha256": "957b16c0b22a66f9607ca87030d3de90279fc29feda3ff76a758cb2cb2b407f7",
+   "facts": [
+    {
+     "county": "New Hanover",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Boil-water notice",
+     "status_word": "Boil notice",
+     "quote": "A boil-water notice is in effect for all customers until further notice."
+    }
+   ]
+  },
+  {
+   "report_id": "R04",
+   "text_sha256": "3cb5bb584f5dbd6c84d69bca3ba97cfda9bdc5961ec466a025c3d951c1b50fb4",
+   "facts": [
+    {
+     "county": "New Hanover",
+     "lifeline_or_resource": "Health and Medical",
+     "metric": "Hospital status",
+     "value": "Hospital on generator or diverting",
+     "status_word": "On generator",
+     "quote": "is on generator power and diverting ambulances to inland hospitals."
+    }
+   ]
+  },
+  {
+   "report_id": "R05",
+   "text_sha256": "82b459d73418642d64bab654d699c771b23f987cb143751345eb49a39088105a",
+   "facts": [
+    {
+     "county": "onslow",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 1,
+     "status_word": "Out",
+     "quote": "no water coming out of the taps anywhere in onslow county"
+    }
+   ]
+  },
+  {
+   "report_id": "R06",
+   "text_sha256": "b5ef2093b349ddfbb8da4b05842ab454fc8921d66466cff95865df7731a61a62",
+   "facts": [
+    {
+     "county": "Pender",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "No open route to county seat",
+     "status_word": "No route",
+     "quote": "no open route to the county seat"
+    }
+   ]
+  },
+  {
+   "report_id": "R07",
+   "text_sha256": "d4177388646303ec4717a1162e7903744698c0eec0a791c282ec0b079a352871",
+   "facts": [
+    {
+     "county": "Columbus",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "About a third of primary routes are closed."
+    }
+   ]
+  },
+  {
+   "report_id": "R08",
+   "text_sha256": "a4881a7c559d4615923eefd584d1be915e99ca673b63ce7362f7e1b851214210",
+   "facts": [
+    {
+     "county": "Bladen",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 2,
+     "status_word": "Out",
+     "quote": "Two water systems are out of service"
+    },
+    {
+     "county": "Bladen",
+     "lifeline_or_resource": "Health and Medical",
+     "metric": "Hospital status",
+     "value": "Hospital on generator or diverting",
+     "status_word": "On generator",
+     "quote": "a hospital in the county is on generator"
+    }
+   ]
+  },
+  {
+   "report_id": "R09",
+   "text_sha256": "adbe3d4ddc5c685ce118082dfc102b5ec756459d838a64f9b0162150052b2b35",
+   "facts": [
+    {
+     "county": "Brunswick",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "Several primary routes are closed by flooding"
+    }
+   ]
+  },
+  {
+   "report_id": "R10",
+   "text_sha256": "ece87f764f4e0bf544e0bb0f48a10bc10c34a250f0644bd8cfbeb76537aea9b9",
+   "facts": [
+    {
+     "county": "New Hanover",
+     "lifeline_or_resource": "Generators",
+     "metric": "Requested",
+     "value": 7,
+     "status_word": "Requested",
+     "quote": "Requesting seven generators"
+    },
+    {
+     "county": "New Hanover",
+     "lifeline_or_resource": "Water",
+     "metric": "Requested",
+     "value": 1,
+     "status_word": "Requested",
+     "quote": "one water tanker"
+    }
+   ]
+  },
+  {
+   "report_id": "R11",
+   "text_sha256": "e1be668aab3841fa9d2d714491a653f67ef0498a81f6654b6fb35805954f515b",
+   "facts": [
+    {
+     "county": "Sampson",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Open",
+     "status_word": "Open",
+     "quote": "Primary routes are open"
+    }
+   ]
+  },
+  {
+   "report_id": "R12",
+   "text_sha256": "a055ebba75e17871e45c1df7d39a92ce8445a839d77d53d738b92bc1b411bf63",
+   "facts": [
+    {
+     "county": "Onslow",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Normal",
+     "status_word": "Normal",
+     "quote": "The county water system is operating normally."
+    }
+   ]
+  },
+  {
+   "report_id": "R13",
+   "text_sha256": "154e583f53d542dfce6b798bae923c8ddd4a8a177c23b4dd8e5edc8d537d06bd",
+   "facts": [
+    {
+     "county": "Robeson",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 3,
+     "status_word": "Out",
+     "quote": "three municipal water systems are offline"
+    },
+    {
+     "county": "Robeson",
+     "lifeline_or_resource": "Health and Medical",
+     "metric": "Hospital status",
+     "value": "Hospital on generator or diverting",
+     "status_word": "On generator",
+     "quote": "a hospital in Lumberton is on generator"
+    }
+   ]
+  },
+  {
+   "report_id": "R14",
+   "text_sha256": "d068a184da7847f364596f9e723596959f2dde53a1945fe004927ee9ebfcbcea",
+   "facts": [
+    {
+     "county": "Cumberland",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "No open route to county seat",
+     "status_word": "No route",
+     "quote": "There is no open route to the county seat."
+    }
+   ]
+  },
+  {
+   "report_id": "R15",
+   "text_sha256": "b6492bce095e799d82145d7f4726b4427b522c4c1d726518d5b3ed5aa58c8761",
+   "facts": [
+    {
+     "county": "Columbus",
+     "lifeline_or_resource": "Shelter",
+     "metric": "Requested",
+     "value": 200,
+     "status_word": "Requested",
+     "quote": "We need about two hundred cots."
+    }
+   ]
+  },
+  {
+   "report_id": "R16",
+   "text_sha256": "2bfba6788bcb02a75543599affe7dcca7018c4e86266be4e53f2668260ca5b0e",
+   "facts": [
+    {
+     "county": "Robeson",
+     "lifeline_or_resource": "Water",
+     "metric": "Requested",
+     "value": 4,
+     "status_word": "Requested",
+     "quote": "Requesting four water tankers"
+    },
+    {
+     "county": "Robeson",
+     "lifeline_or_resource": "Sanitation",
+     "metric": "Requested",
+     "value": 16,
+     "status_word": "Requested",
+     "quote": "sixteen portable toilet and handwashing units"
+    }
+   ]
+  },
+  {
+   "report_id": "R17",
+   "text_sha256": "2d4ab5217f4532d6a58efe7e49a423a2efc123a8ade4682cea55cddd8e05dbf9",
+   "facts": [
+    {
+     "county": "Hoke",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "Several primary routes are closed"
+    },
+    {
+     "county": "Hoke",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Boil-water notice",
+     "status_word": "Boil notice",
+     "quote": "boil-water notice"
+    }
+   ]
+  },
+  {
+   "report_id": "R18",
+   "text_sha256": "63002621cf54777114864d59d839fd91f7ec896bb152cdb09c61c82c31b6ee12",
+   "facts": [
+    {
+     "county": "Cumberland",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "Only some primary routes remain closed."
+    }
+   ]
+  },
+  {
+   "report_id": "R19",
+   "text_sha256": "f93291d7384ff42530e9aa56b9437b453e30bf5822bdccc3b89f4687562af3d5",
+   "facts": [
+    {
+     "county": "Columbus",
+     "lifeline_or_resource": "Shelter",
+     "metric": "Requested",
+     "value": 120,
+     "status_word": "Requested",
+     "quote": "we need one hundred twenty cots"
+    }
+   ]
+  },
+  {
+   "report_id": "R20",
+   "text_sha256": "7ffaedba9dafcf34942bc94e78fde3d6a76e273402958b60e4d0b3c0c772e1c5",
+   "facts": [
+    {
+     "county": "Cumberland",
+     "lifeline_or_resource": "Search-and-rescue teams",
+     "metric": "Requested",
+     "value": 3,
+     "status_word": "Requested",
+     "quote": "three search-and-rescue teams"
+    },
+    {
+     "county": "Cumberland",
+     "lifeline_or_resource": "Generators",
+     "metric": "Requested",
+     "value": 5,
+     "status_word": "Requested",
+     "quote": "five generators"
+    }
+   ]
+  },
+  {
+   "report_id": "R21",
+   "text_sha256": "0eb6268f2ee242b15df23942f7a02fb016904823a7bde44f19edcd138fc4d002",
+   "facts": [
+    {
+     "county": "Harnett",
+     "lifeline_or_resource": "Health and Medical",
+     "metric": "Hospital status",
+     "value": "Hospital on generator or diverting",
+     "status_word": "On generator",
+     "quote": "The main hospital is on generator and diverting non-critical patients."
+    }
+   ]
+  },
+  {
+   "report_id": "R22",
+   "text_sha256": "8d9e166488242d428a4b3e4d20e56c4bf5d5d98a832734c01d0e753bccbf3fcd",
+   "facts": [
+    {
+     "county": "Scotland",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 1,
+     "status_word": "Out",
+     "quote": "Laurinburg's water system is out of service."
+    },
+    {
+     "county": "Scotland",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Open",
+     "status_word": "Open",
+     "quote": "Roads are open."
+    }
+   ]
+  },
+  {
+   "report_id": "R23",
+   "text_sha256": "f0c8ca8c124c1a40ebc9a9b8924b713526bf1bbe82c80f9d0d82a7175b16087f",
+   "facts": [
+    {
+     "county": "Moore",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 2,
+     "status_word": "Out",
+     "quote": "Two water systems are out of service in the southern part of the county."
+    }
+   ]
+  },
+  {
+   "report_id": "R24",
+   "text_sha256": "424edb80a30adfb5020e3960032ec93d6d9cd3372070974d366500e4e8b10a21",
+   "facts": [
+    {
+     "county": "Harnett",
+     "lifeline_or_resource": "Health and Medical",
+     "metric": "Hospital status",
+     "value": "Hospital closed or evacuating",
+     "status_word": "Evacuating",
+     "quote": "the main hospital has begun evacuating patients"
+    }
+   ]
+  },
+  {
+   "report_id": "R25",
+   "text_sha256": "4557ebea2a55eb939b89c0f22ed991d6a2cc16a403b61523426b62947bcbf3d6",
+   "facts": [
+    {
+     "county": "Richmond",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "Some primary routes are closed"
+    },
+    {
+     "county": "Richmond",
+     "lifeline_or_resource": "Health and Medical",
+     "metric": "Hospital status",
+     "value": "Hospital on generator or diverting",
+     "status_word": "On generator",
+     "quote": "a hospital in the county is on generator"
+    }
+   ]
+  },
+  {
+   "report_id": "R26",
+   "text_sha256": "919e8058713d18dd1853aa1f2475bb681e567312b2d89bf55992a3ae9500f5ec",
+   "facts": [
+    {
+     "county": "Moore",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 5,
+     "status_word": "Out",
+     "quote": "five water systems out of service"
+    }
+   ]
+  },
+  {
+   "report_id": "R27",
+   "text_sha256": "d57c506a5bc428319781643e6b85b89c8ba74ed684275c664be4ecb653da6431",
+   "facts": [
+    {
+     "county": "Guilford",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "No open route to county seat",
+     "status_word": "No route",
+     "quote": "No open route to the county seat at this time."
+    }
+   ]
+  },
+  {
+   "report_id": "R28",
+   "text_sha256": "1d0e6bc29beb23c8bbce645a833104a60f57277243d3a0bb69080ba5c7f60b29",
+   "facts": [
+    {
+     "county": "Harnett",
+     "lifeline_or_resource": "Medical teams",
+     "metric": "Requested",
+     "value": 2,
+     "status_word": "Requested",
+     "quote": "We are requesting two medical teams for the county."
+    }
+   ]
+  },
+  {
+   "report_id": "R29",
+   "text_sha256": "228a09983d2cfbdaa251d06a8f542ef28f690aeb7fcd11e11961420f3a1d9817",
+   "facts": [
+    {
+     "county": "Lee",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Boil-water notice",
+     "status_word": "Boil notice",
+     "quote": "A boil-water notice is in effect for Sanford."
+    }
+   ]
+  },
+  {
+   "report_id": "R30",
+   "text_sha256": "c45c1a755769442f41bfbfdfd652bbcf70f43f912922b5631ca4ddeee29c25e3",
+   "facts": [
+    {
+     "county": "Guilford",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Open",
+     "status_word": "Open",
+     "quote": "I-85 has reopened."
+    },
+    {
+     "county": "Guilford",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "Some primary routes into Greensboro remain closed."
+    }
+   ]
+  },
+  {
+   "report_id": "R31",
+   "text_sha256": "787c4d6f161cf90e72598e97b9b23c1239c4961792099d808ed039d81c918e1e",
+   "facts": [
+    {
+     "county": "Sampson",
+     "lifeline_or_resource": "Shelter",
+     "metric": "Requested",
+     "value": 40,
+     "status_word": "Requested",
+     "quote": "We need about forty cots"
+    }
+   ]
+  },
+  {
+   "report_id": "R32",
+   "text_sha256": "33964477ab201bd4ecf828ef2b1a2052046627d1441f06709e4022858f016a95",
+   "facts": [
+    {
+     "county": "Chatham",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "Some primary routes are closed by flooding along the Haw River."
+    }
+   ]
+  },
+  {
+   "report_id": "R33",
+   "text_sha256": "35f6a4cab70ccd33a4b9b3315412b67c7a685d554d24a6cc65a49125aaa9a233",
+   "facts": [
+    {
+     "county": "Randolph",
+     "lifeline_or_resource": "Health and Medical",
+     "metric": "Hospital status",
+     "value": "Hospital on generator or diverting",
+     "status_word": "On generator",
+     "quote": "is on generator power"
+    }
+   ]
+  },
+  {
+   "report_id": "R34",
+   "text_sha256": "4e4f38c7bb6d1253ee7403250f65fa165c8d52d0da2b0bc7f673be5e553f10e5",
+   "facts": [
+    {
+     "county": "Sampson",
+     "lifeline_or_resource": "Shelter",
+     "metric": "Requested",
+     "value": 110,
+     "status_word": "Requested",
+     "quote": "We need roughly one hundred ten cots and shelter kits."
+    }
+   ]
+  },
+  {
+   "report_id": "R35",
+   "text_sha256": "dca7b06f6a3e721b33c9f4b07c5360d251c38fe1db0da318d65c8fdbf289bf45",
+   "facts": [
+    {
+     "county": "Bladen",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 1,
+     "status_word": "Out",
+     "quote": "One water system is still out of service"
+    },
+    {
+     "county": "Bladen",
+     "lifeline_or_resource": "Health and Medical",
+     "metric": "Hospital status",
+     "value": "Hospital closed or evacuating",
+     "status_word": "Closed",
+     "quote": "a hospital in the county has closed"
+    }
+   ]
+  },
+  {
+   "report_id": "R36",
+   "text_sha256": "01dae4f602ee14de3c9dab8d466cdce44f7b23aa06a6b18087e40987888ae70f",
+   "facts": [
+    {
+     "county": "Pender",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "No open route to county seat",
+     "status_word": "No route",
+     "quote": "no open route to the county seat"
+    },
+    {
+     "county": "Pender",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 1,
+     "status_word": "Out",
+     "quote": "the water system is out of service"
+    },
+    {
+     "county": "Pender",
+     "lifeline_or_resource": "Water",
+     "metric": "Requested",
+     "value": 4,
+     "status_word": "Requested",
+     "quote": "four water tankers"
+    }
+   ]
+  },
+  {
+   "report_id": "R37",
+   "text_sha256": "bea7cef3ada2ec18bb1a4122856c2202a1b8b7457b4a5d6159f95dfc07d0bce5",
+   "facts": [
+    {
+     "county": "Alamance",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Boil-water notice",
+     "status_word": "Boil notice",
+     "quote": "A boil-water notice is in effect in Burlington."
+    }
+   ]
+  },
+  {
+   "report_id": "R38",
+   "text_sha256": "24b82ad66c995dca694e3bdf6cf6296865b68bcc1cbd981453f74cdb782e95e0",
+   "facts": [
+    {
+     "county": "Montgomery",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "Several primary routes were closed by mudslides and remain closed"
+    },
+    {
+     "county": "Montgomery",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Boil-water notice",
+     "status_word": "Boil notice",
+     "quote": "one water system is under a boil-water notice"
+    }
+   ]
+  },
+  {
+   "report_id": "R39",
+   "text_sha256": "cf21057f5abd220a698a1401640e93837e5c8284b78d1536cb4b19b8cff7f8a6",
+   "facts": [
+    {
+     "county": "Scotland",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 0,
+     "status_word": "Normal",
+     "quote": "water is back everywhere in scotland county, laurinburg all good now!!"
+    }
+   ]
+  },
+  {
+   "report_id": "R40",
+   "text_sha256": "0886f703647f14b53cc4cc20b28f33e2bf349a33af075881c318627144ad326f",
+   "facts": [
+    {
+     "county": "Rockingham",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "Some primary routes are closed"
+    }
+   ]
+  },
+  {
+   "report_id": "R41",
+   "text_sha256": "d9bc299983cfb7e922f5579ce3d3123b024a4f69146a247659a2b6830816429f",
+   "facts": [
+    {
+     "county": "Cumberland",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "some primary routes are still closed"
+    }
+   ]
+  },
+  {
+   "report_id": "R42",
+   "text_sha256": "a25a58b0d637fa83884007ff2400452142a48545f26eb056cdcbee604689552e",
+   "facts": [
+    {
+     "county": "New Hanover",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "some primary routes remain closed"
+    }
+   ]
+  },
+  {
+   "report_id": "R43",
+   "text_sha256": "a4cf006662942ba3790a94a84b480ce7e8f7bd5e0db70035bf3f1680962f284f",
+   "facts": [
+    {
+     "county": "Robeson",
+     "lifeline_or_resource": "Food",
+     "metric": "Requested",
+     "value": 13,
+     "status_word": "Requested",
+     "quote": "thirteen pallets of meals"
+    },
+    {
+     "county": "Robeson",
+     "lifeline_or_resource": "Hygiene items",
+     "metric": "Requested",
+     "value": 100,
+     "status_word": "Requested",
+     "quote": "one hundred hygiene kits"
+    }
+   ]
+  },
+  {
+   "report_id": "R44",
+   "text_sha256": "24a3f3f97aaee9281e68525875b43b5603951e203792859c1a5ccdad1bcf3305",
+   "facts": [
+    {
+     "county": "Robeson",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 0,
+     "status_word": "Normal",
+     "quote": "All three water systems are back in service"
+    },
+    {
+     "county": "Robeson",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Boil-water notice",
+     "status_word": "Boil notice",
+     "quote": "a boil-water notice remains in effect"
+    }
+   ]
+  },
+  {
+   "report_id": "R45",
+   "text_sha256": "ee6748accbe66a323d6bec162d7376c191bac136f86a83d0752b999ef7d735d7",
+   "facts": [
+    {
+     "county": "Caswell",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Some primary routes closed",
+     "status_word": "Partly closed",
+     "quote": "Some primary routes are closed"
+    },
+    {
+     "county": "Caswell",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Boil-water notice",
+     "status_word": "Boil notice",
+     "quote": "Yanceyville's water system is under a boil-water notice"
+    }
+   ]
+  },
+  {
+   "report_id": "R46",
+   "text_sha256": "a5465c64ae4b090d6ec299501a768c801ca54c5acac94aeff57f4a19aad9a8be",
+   "facts": [
+    {
+     "county": "Harnett",
+     "lifeline_or_resource": "Health and Medical",
+     "metric": "Hospital status",
+     "value": "Hospital on generator or diverting",
+     "status_word": "On generator",
+     "quote": "is still on generator"
+    }
+   ]
+  },
+  {
+   "report_id": "R47",
+   "text_sha256": "1b74ed60fa01649877255af0e418947ef37c80b7519e3a66937b7362f132c000",
+   "facts": [
+    {
+     "county": "New Hanover",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Normal",
+     "status_word": "Normal",
+     "quote": "The boil-water notice has been lifted for all customers."
+    }
+   ]
+  },
+  {
+   "report_id": "R48",
+   "text_sha256": "a6eccc91a82d489b82955a5b478d9e0a4ace301cbd904d7922f41c910f2d3f47",
+   "facts": [
+    {
+     "county": "Hoke",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Open",
+     "status_word": "Open",
+     "quote": "All primary routes are open"
+    },
+    {
+     "county": "Hoke",
+     "lifeline_or_resource": "Water",
+     "metric": "System status",
+     "value": "Normal",
+     "status_word": "Normal",
+     "quote": "the boil-water notice for Raeford has been lifted"
+    }
+   ]
+  },
+  {
+   "report_id": "R49",
+   "text_sha256": "66ba0929cbded35b0748340ef827b8fb04e630fe3e37a7ccb0cce0470164a8c4",
+   "facts": [
+    {
+     "county": "Moore",
+     "lifeline_or_resource": "Water",
+     "metric": "Systems out of service",
+     "value": 0,
+     "status_word": "Normal",
+     "quote": "All water systems in the county are back in service."
+    }
+   ]
+  },
+  {
+   "report_id": "R50",
+   "text_sha256": "112b2906e0d56dd32ea23d0862a456e19c1a83dadae7e7e1193b34180472a9ec",
+   "facts": [
+    {
+     "county": "Brunswick",
+     "lifeline_or_resource": "Roads",
+     "metric": "Route status",
+     "value": "Open",
+     "status_word": "Open",
+     "quote": "All primary routes are open again."
+    }
+   ]
+  }
+ ]
 }
