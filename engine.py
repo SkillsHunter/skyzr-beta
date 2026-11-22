@@ -1265,3 +1265,53 @@ def accepted_facts_csv(ai_reads: dict) -> str:
             w.writerow([rid, f.county, f.lifeline_or_resource, f.metric, f.value,
                         f.status_word, f.source, f.sim_hour, f.quote, f.verified])
     return buf.getvalue()
+
+
+# ===========================================================================
+# Phase 3E: Gaps view (read-only; no ranking or recommendation by SKYZR)
+# ===========================================================================
+
+GAPS_NOTE = "Gap = need minus on hand minus in transit. SKYZR doesn't rank or recommend; people decide."
+
+
+def gap_of(need, on_hand: int, in_transit: int):
+    """need - on hand - in transit, never below 0; None ("unknown") if need is unknown."""
+    if need is None:
+        return None
+    return max(0, int(need) - int(on_hand) - int(in_transit))
+
+
+def gaps_rows(state: dict) -> list[dict]:
+    """One row per storm-path county, alphabetical by county name (SKYZR's only
+    default order). Each resource: need, on_hand, in_transit, gap (None = unknown).
+    A silent county's values are as last known, at the hour shown in `as_of`."""
+    rows = []
+    for fips, s in state.items():
+        if not s["hit"]:
+            continue
+        rows.append({
+            "fips": fips, "county": s["county"], "silent": s["silent"],
+            "as_of": s["lifelines_as_of"], "status_word": s["status_word"],
+            "resources": {
+                r: {**{k: s["resources"][r][k] for k in ("need", "on_hand", "in_transit")},
+                    "gap": gap_of(s["resources"][r]["need"], s["resources"][r]["on_hand"],
+                                  s["resources"][r]["in_transit"])}
+                for r, _, _ in RESOURCES
+            },
+        })
+    return sorted(rows, key=lambda row: row["county"])
+
+
+def sort_gaps(rows: list[dict], by: str) -> list[dict]:
+    """The person's own sort: "County name" or a resource name (largest gap
+    first; unknown gaps last, then county name). Reports a fact; ranks nothing."""
+    if by == "County name" or by not in {r for r, _, _ in RESOURCES}:
+        return sorted(rows, key=lambda row: row["county"])
+    return sorted(rows, key=lambda row: (row["resources"][by]["gap"] is None,
+                                         -(row["resources"][by]["gap"] or 0), row["county"]))
+
+
+def grey_stock_totals(state: dict) -> dict:
+    """Stock held in grey (not hit) counties, per resource."""
+    return {r: sum(s["resources"][r]["on_hand"] for s in state.values() if not s["hit"])
+            for r, _, _ in RESOURCES}

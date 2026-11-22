@@ -451,10 +451,37 @@ with st.container(border=True):
     if ss.slider_note:
         st.caption(ss.slider_note)
 
+# ---- Gaps view (Phase 3E): read-only, alphabetical unless the person sorts ----------
+with st.expander(f"Gaps · hour {clock.cursor}", expanded=False):
+    sort_by = st.selectbox(
+        "Sort by", ["County name"] + [r for r, _, _ in engine.RESOURCES], key="gaps_sort",
+        help="County name by default. Sorting by a resource lists its largest gap first; "
+             "it reports a fact and recommends nothing.")
+    gap_rows = engine.sort_gaps(engine.gaps_rows(state), sort_by)
+
+    def gap_cell(row, r):
+        v = row["resources"][r]
+        need = "unknown" if v["need"] is None else v["need"]
+        gap = "unknown" if v["gap"] is None else v["gap"]
+        cell = (f"<b>{gap}</b><br><small>need {need} · on hand {v['on_hand']} · "
+                f"in transit {v['in_transit']}</small>")
+        if row["silent"]:
+            return f'<span class="sk-muted">{cell}<br><small>last known (hour {row["as_of"]})</small></span>'
+        return cell
+
+    body = [[ui.e(row["county"]) + (f'<br><small class="sk-muted">Silent: last known '
+                                       f'(hour {row["as_of"]})</small>' if row["silent"] else "")]
+            + [gap_cell(row, r) for r, _, _ in engine.RESOURCES] for row in gap_rows]
+    totals = engine.grey_stock_totals(state)
+    body.append(['<span class="sk-muted">Stock held in grey counties</span>']
+                + [f'<span class="sk-muted">{totals[r]}</span>' for r, _, _ in engine.RESOURCES])
+    ui.table(["County (storm path)"] + [f"{r} gap" for r, _, _ in engine.RESOURCES], body)
+    st.caption(engine.GAPS_NOTE + (" In AI mode, a resource with no request has an unknown "
+                                   "need and an unknown gap." if ai_mode() else ""))
+
 with st.container(horizontal=True, gap="small"):
-    for i, label in enumerate(["Gaps tab", "Ask SKYZR"]):
-        st.button(f"{label} · Coming next", key=f"coming_{i}", disabled=True,
-                  help="Not built yet. It will be added in a later phase.")
+    st.button("Ask SKYZR · Coming next", key="coming_ask", disabled=True,
+              help="Not built yet. It will be added in a later phase.")
 
 # ---- Map and county panel ------------------------------------------------------
 map_col, panel_col = st.columns([7, 5], gap="medium")
